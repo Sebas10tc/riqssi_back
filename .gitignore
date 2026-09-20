@@ -1,0 +1,17 @@
+.env
+.env.*
+!.env.example
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.venv/
+venv/
+storage/*
+!storage/.gitkeep
+tmp_*
+*.sqlite3
+*.db
+*.log
+cookies*.txt
+*.cookies

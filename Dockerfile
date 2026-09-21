@@ -13,7 +13,6 @@ COPY requirements.txt ./
 RUN pip install --upgrade pip && pip install -r requirements.txt
 COPY app ./app
 COPY models_ML ./models_ML
-COPY storage ./storage
 RUN mkdir -p storage/audio_tracks storage/mfcc_data storage/payment_proofs \
     storage/thumbnails storage/video_frames storage/video_tracks storage/videos
 

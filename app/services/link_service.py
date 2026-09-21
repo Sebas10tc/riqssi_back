@@ -1,5 +1,6 @@
 import os
 import hashlib
+import logging
 from pathlib import Path
 
 import cv2
@@ -7,6 +8,8 @@ import yt_dlp
 import subprocess
 from fastapi import HTTPException
 from .storage_service import persist_file
+
+logger = logging.getLogger(__name__)
 
 # Rutas por defecto
 VIDEO_DIR = "storage/videos"
@@ -151,6 +154,7 @@ def process_video_download(url: str):
             for extractor_opts in _build_extractor_attempts(url):
                 ydl_opts = {**_build_base_ydl_opts(), **network_opts, **extra_opts, **extractor_opts}
                 try:
+                    logger.info('Download attempt: url=%s extractor_options=%s', url, extractor_opts)
                     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     # 1. Comprobar si es un video y obtener info sin descargar aún
                         info = ydl.extract_info(url, download=False)
@@ -178,6 +182,7 @@ def process_video_download(url: str):
                     if not video_candidates:
                         raise HTTPException(status_code=400, detail="El enlace no contiene un video descargable.")
                     video_path = str(video_candidates[0])
+                    logger.info('Video download completed: path=%s size=%s', video_path, Path(video_path).stat().st_size)
 
                     # 3. Manejar miniatura
                     downloaded_path = Path(video_path)
@@ -254,6 +259,7 @@ def process_video_download(url: str):
                     raise
                 except Exception as e:
                     last_error = str(e)
+                    logger.exception('Link download pipeline failed after yt-dlp attempt: url=%s', url)
                     error_text = last_error.lower()
 
                     if 'this video is unavailable' in error_text or 'video unavailable' in error_text:

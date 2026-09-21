@@ -1,12 +1,15 @@
 from fastapi import APIRouter, Depends, Body
 from sqlalchemy.orm import Session
 from pathlib import Path
+import logging
 import cv2
 from urllib.parse import quote
 from ..database import get_db
 from ..models import Video
 from ..services.link_service import process_video_download
 from .router_auth import require_active_membership
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -164,9 +167,14 @@ async def download_video(
         usuario_nombreuser=nombreuser # ID del usuario logeado
     )
 
-    db.add(nuevo_video)
-    db.commit()
-    db.refresh(nuevo_video)
+    try:
+        db.add(nuevo_video)
+        db.commit()
+        db.refresh(nuevo_video)
+    except Exception:
+        db.rollback()
+        logger.exception('Database insert failed for downloaded video hash=%s', video_data['hash'])
+        raise HTTPException(status_code=500, detail='No se pudo registrar el video descargado.')
 
     thumbnail_source = _resolve_thumbnail_source(nuevo_video)
 

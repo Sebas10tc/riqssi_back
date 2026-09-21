@@ -1,9 +1,11 @@
 import os
+import logging
 from pathlib import Path
 
 from dotenv import load_dotenv
 
 load_dotenv()
+logger = logging.getLogger(__name__)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 BUCKETS = {
@@ -39,19 +41,30 @@ def _storage_key(path_value: str | Path) -> tuple[str, str]:
 
 def persist_file(local_path: str | Path, storage_path: str | Path) -> str:
     """Upload a generated file and return its stable storage key."""
+    normalized_path = str(storage_path).replace('\\', '/').lstrip('/')
+    if not normalized_path.startswith('storage/'):
+        normalized_path = f'storage/{normalized_path}'
+
     client = _client()
     if not client:
-        normalized = str(storage_path).replace('\\', '/')
-        return normalized if normalized.startswith('storage/') else 'storage/' + normalized.lstrip('/')
+        logger.info('Storage local fallback: %s', normalized_path)
+        return normalized_path
 
-    bucket, object_name = _storage_key(storage_path)
-    with open(local_path, 'rb') as source:
-        client.storage.from_(bucket).upload(
-            object_name,
-            source.read(),
-            {'upsert': 'true', 'content-type': 'application/octet-stream'},
-        )
-    return f'storage/{object_name.split("/", 1)[0]}/{object_name.split("/", 1)[1]}'
+    bucket, object_name = _storage_key(normalized_path)
+    try:
+        file_size = Path(local_path).stat().st_size
+        logger.info('Uploading %s bytes to Supabase bucket=%s object=%s', file_size, bucket, object_name)
+        with open(local_path, 'rb') as source:
+            client.storage.from_(bucket).upload(
+                object_name,
+                source.read(),
+                {'upsert': 'true', 'content-type': 'application/octet-stream'},
+            )
+        logger.info('Supabase upload completed: bucket=%s object=%s', bucket, object_name)
+        return normalized_path
+    except Exception:
+        logger.exception('Supabase upload failed: bucket=%s object=%s', bucket, object_name)
+        raise
 
 
 def ensure_local_file(path_value: str | Path) -> str:
@@ -66,10 +79,15 @@ def ensure_local_file(path_value: str | Path) -> str:
         return str(local_path)
 
     bucket, object_name = _storage_key(path_text)
-    local_path.parent.mkdir(parents=True, exist_ok=True)
-    content = client.storage.from_(bucket).download(object_name)
-    local_path.write_bytes(content)
-    return str(local_path)
+    try:
+        logger.info('Downloading Supabase object: bucket=%s object=%s', bucket, object_name)
+        local_path.parent.mkdir(parents=True, exist_ok=True)
+        content = client.storage.from_(bucket).download(object_name)
+        local_path.write_bytes(content)
+        return str(local_path)
+    except Exception:
+        logger.exception('Supabase download failed: bucket=%s object=%s', bucket, object_name)
+        raise
 
 
 def delete_file(path_value: str | Path) -> None:

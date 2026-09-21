@@ -256,6 +256,11 @@ def analyze_video_track(pvideo_hash: str, db: Session):
     if not pista:
         raise HTTPException(status_code=404, detail="Pista de video no encontrada")
 
+    if not pista.video or not pista.video.usuario_nombreuser:
+        raise HTTPException(status_code=400, detail="El video no tiene un usuario asociado.")
+
+    user = require_active_membership(pista.video.usuario_nombreuser, db, pista.video.hash_video)
+
     video_path = _resolve_video_track_path(pista, db)
 
     if not os.path.exists(video_path):

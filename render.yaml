@@ -11,6 +11,8 @@ services:
           property: connectionString
       - key: FRONTEND_URLS
         sync: false
+      - key: APP_ENV
+        value: production
       - key: SMTP_PASSWORD
         sync: false
 

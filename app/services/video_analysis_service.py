@@ -3,7 +3,6 @@ import cv2
 import torch
 import torch.nn as nn
 from torchvision import models, transforms
-import face_recognition
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from dotenv import load_dotenv
@@ -11,6 +10,10 @@ from ..models import Pista_Video, Extraccion_Video, Resultado_Video
 from ..api.router_auth import consume_video_analysis, require_active_membership
 from pathlib import Path
 from .storage_service import ensure_local_file, persist_file
+
+FACE_CASCADE = cv2.CascadeClassifier(
+    str(Path(cv2.data.haarcascades) / 'haarcascade_frontalface_default.xml')
+)
 
 # Cargar las variables de entorno desde el archivo .env
 load_dotenv()
@@ -298,10 +301,17 @@ def analyze_video_track(pvideo_hash: str, db: Session):
             
             if count % step == 0:
                 rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                face_locations = face_recognition.face_locations(rgb_frame)
-                
-                if face_locations:
-                    top, right, bottom, left = face_locations[0]
+                gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                detected_faces = FACE_CASCADE.detectMultiScale(
+                    gray_frame,
+                    scaleFactor=1.1,
+                    minNeighbors=5,
+                    minSize=(60, 60),
+                )
+
+                if len(detected_faces):
+                    left, top, width, height = detected_faces[0]
+                    right, bottom = left + width, top + height
                     face_image = rgb_frame[top:bottom, left:right]
                     face_image = cv2.resize(face_image, (224, 224))
                     

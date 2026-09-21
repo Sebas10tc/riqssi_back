@@ -6,6 +6,7 @@ python-dotenv
 python-multipart
 python-jose[cryptography]
 passlib[bcrypt]
+bcrypt==4.0.1
 alembic
 supabase
 yt-dlp>=2026.8.19

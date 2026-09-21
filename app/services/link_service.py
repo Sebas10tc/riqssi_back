@@ -256,6 +256,16 @@ def process_video_download(url: str):
                     last_error = str(e)
                     error_text = last_error.lower()
 
+                    if 'this video is unavailable' in error_text or 'video unavailable' in error_text:
+                        raise HTTPException(
+                            status_code=400,
+                            detail='YouTube indica que el video no está disponible. Verifica que el enlace sea público y siga activo.',
+                        )
+
+                    if 'private video' in error_text or 'sign in to confirm your age' in error_text:
+                        auth_error_detected = True
+                        continue
+
                     if (
                     'no video could be found in this tweet' in error_text
                     or 'this tweet does not contain a video' in error_text
@@ -272,7 +282,11 @@ def process_video_download(url: str):
                     )
 
                 # Detect common yt-dlp authentication/cookies errors and surface a clear 403
-                    if 'sign in to confirm you' in error_text or 'not a bot' in error_text or 'cookies' in error_text:
+                    if (
+                        'sign in to confirm you are not a bot' in error_text
+                        or 'use --cookies-from-browser' in error_text
+                        or 'authentication required' in error_text
+                    ):
                         auth_error_detected = True
                         continue
 

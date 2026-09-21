@@ -26,6 +26,7 @@ def _build_base_ydl_opts():
         'writethumbnail': True,
         'quiet': True,
         'no_warnings': True,
+        'js_runtimes': {'node': {}},
         'socket_timeout': float(os.getenv('YTDLP_SOCKET_TIMEOUT', '60')),
         'retries': int(os.getenv('YTDLP_RETRIES', '10')),
         'fragment_retries': int(os.getenv('YTDLP_FRAGMENT_RETRIES', '10')),
@@ -67,6 +68,14 @@ def _build_cookie_attempts():
 
 
 def _build_extractor_attempts(url: str):
+    if 'youtube.com' in url.lower() or 'youtu.be' in url.lower():
+        return [
+            {},
+            {'extractor_args': {'youtube': {'player_client': ['web_safari']}}},
+            {'extractor_args': {'youtube': {'player_client': ['android']}}},
+            {'extractor_args': {'youtube': {'player_client': ['ios']}}},
+        ]
+
     if 'tiktok.com' not in url.lower():
         return [{}]
 
@@ -141,17 +150,16 @@ def process_video_download(url: str):
         for extra_opts in _build_cookie_attempts():
             for extractor_opts in _build_extractor_attempts(url):
                 ydl_opts = {**_build_base_ydl_opts(), **network_opts, **extra_opts, **extractor_opts}
+                try:
+                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    # 1. Comprobar si es un video y obtener info sin descargar aún
+                        info = ydl.extract_info(url, download=False)
 
-            try:
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    # 1. Comprobar que es un video y obtener info sin descargar aún
-                    info = ydl.extract_info(url, download=False)
+                        if 'entries' in info:
+                            raise HTTPException(status_code=400, detail="El link debe ser de un video individual, no una lista.")
 
-                    if 'entries' in info:
-                        raise HTTPException(status_code=400, detail="El link debe ser de un video individual, no una lista.")
-
-                    # 2. Descargar
-                    download_info = ydl.extract_info(url, download=True)
+                        # 2. Descargar
+                        download_info = ydl.extract_info(url, download=True)
                     video_path = ydl.prepare_filename(download_info)
 
                     # After post-processing, yt-dlp may change the extension or
@@ -242,20 +250,20 @@ def process_video_download(url: str):
                         "video_path": remote_video_path,
                         "thumb": remote_thumb_path
                     }
-            except HTTPException:
-                raise
-            except Exception as e:
-                last_error = str(e)
-                error_text = last_error.lower()
+                except HTTPException:
+                    raise
+                except Exception as e:
+                    last_error = str(e)
+                    error_text = last_error.lower()
 
-                if (
+                    if (
                     'no video could be found in this tweet' in error_text
                     or 'this tweet does not contain a video' in error_text
                     or 'no se encontró ningún video en este tweet' in error_text
                     or 'does not contain a video' in error_text
                     or 'no video' in error_text
                 ):
-                    raise HTTPException(
+                        raise HTTPException(
                         status_code=400,
                         detail=(
                             'El enlace no contiene un video descargable. '
@@ -264,18 +272,18 @@ def process_video_download(url: str):
                     )
 
                 # Detect common yt-dlp authentication/cookies errors and surface a clear 403
-                if 'sign in to confirm you' in error_text or 'not a bot' in error_text or 'cookies' in error_text:
-                    auth_error_detected = True
-                    continue
+                    if 'sign in to confirm you' in error_text or 'not a bot' in error_text or 'cookies' in error_text:
+                        auth_error_detected = True
+                        continue
 
-                if 'timed out' in error_text or 'timeout' in error_text:
-                    continue
+                    if 'timed out' in error_text or 'timeout' in error_text:
+                        continue
 
-                if 'unexpected response from webpage request' in error_text and 'tiktok' in url.lower():
-                    last_error = 'TikTok rechazó la solicitud web. Prueba con un enlace público o configura cookies de TikTok.'
-                    continue
+                    if 'unexpected response from webpage request' in error_text and 'tiktok' in url.lower():
+                        last_error = 'TikTok rechazó la solicitud web. Prueba con un enlace público o configura cookies de TikTok.'
+                        continue
 
-                raise HTTPException(status_code=500, detail=f"Error al procesar el video: {last_error}")
+                    raise HTTPException(status_code=500, detail=f"Error al procesar el video: {last_error}")
 
     if auth_error_detected:
         raise HTTPException(

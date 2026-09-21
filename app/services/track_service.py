@@ -1,7 +1,8 @@
 import os
 import hashlib
+import subprocess
 from pathlib import Path
-from moviepy import VideoFileClip
+import cv2
 from fastapi import HTTPException
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -108,17 +109,29 @@ def extract_and_clean_tracks(video_hash: str, db: Session, force: bool = False):
         }
 
     try:
-        clip = VideoFileClip(original_path)
-        
+        capture = cv2.VideoCapture(original_path)
+        fps = capture.get(cv2.CAP_PROP_FPS) or 0
+        frame_count = capture.get(cv2.CAP_PROP_FRAME_COUNT) or 0
+        capture.release()
+        n_frames = int(frame_count)
+
         # --- EXTRACCIÓN DE AUDIO ---
         audio_filename = f"audio_{video_hash[:10]}.wav"
         audio_path = os.path.join(AUDIO_TRACKS_DIR, audio_filename)
-        
-        if clip.audio:
-            clip.audio.write_audiofile(audio_path, fps=44100, logger=None)
+
+        audio_result = subprocess.run(
+            [
+                'ffmpeg', '-y', '-loglevel', 'error', '-threads', '1',
+                '-i', original_path, '-vn', '-ac', '1', '-ar', '16000',
+                '-c:a', 'pcm_s16le', audio_path,
+            ],
+            capture_output=True,
+            text=True,
+        )
+        if audio_result.returncode == 0 and os.path.exists(audio_path):
             audio_hash = get_file_hash(audio_path)
             audio_path = persist_file(audio_path, f"storage/audio_tracks/{audio_filename}")
-            frecuencia = 44100
+            frecuencia = 16000
         else:
             audio_path, audio_hash, frecuencia = None, None, 0
 
@@ -126,11 +139,22 @@ def extract_and_clean_tracks(video_hash: str, db: Session, force: bool = False):
         video_track_filename = f"track_{video_hash[:10]}.mp4"
         video_track_path = os.path.join(VIDEO_TRACKS_DIR, video_track_filename)
         
-        # Guardar video sin audio
-        clip.without_audio().write_videofile(video_track_path, codec="libx264", logger=None)
+        video_result = subprocess.run(
+            [
+                'ffmpeg', '-y', '-loglevel', 'error', '-threads', '1',
+                '-i', original_path, '-an', '-c:v', 'libx264', '-preset', 'veryfast',
+                '-movflags', '+faststart', video_track_path,
+            ],
+            capture_output=True,
+            text=True,
+        )
+        if video_result.returncode != 0 or not os.path.exists(video_track_path):
+            raise HTTPException(
+                status_code=400,
+                detail=f"No se pudo extraer la pista de video: {video_result.stderr.strip() or 'ffmpeg no generó salida'}",
+            )
         video_track_hash = get_file_hash(video_track_path)
         video_track_path = persist_file(video_track_path, f"storage/video_tracks/{video_track_filename}")
-        n_frames = int(clip.fps * clip.duration)
 
         # --- GUARDAR EN BASE DE DATOS ---
         # Pista Video
@@ -164,14 +188,12 @@ def extract_and_clean_tracks(video_hash: str, db: Session, force: bool = False):
             db.rollback()
             existing_response = _build_existing_response()
             if existing_response:
-                clip.close()
                 if os.path.exists(original_path):
                     os.remove(original_path)
                 return existing_response
             raise
 
         # --- LIMPIEZA ---
-        clip.close()
         if os.path.exists(original_path):
             os.remove(original_path) # Eliminar video original solo después de procesar correctamente
 

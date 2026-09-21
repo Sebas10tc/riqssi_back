@@ -30,8 +30,6 @@ def get_video_metadata(file_path):
         cv2.imwrite(thumb_path, frame)
     
     cap.release()
-    remote_video_path = persist_file(temp_path, f'storage/videos/{os.path.basename(temp_path)}')
-    remote_thumb_path = persist_file(thumb_path, f'storage/thumbnails/{os.path.basename(thumb_path)}') if os.path.exists(thumb_path) else thumb_path
 
     return {
         "resolution": f"{width}x{height}",
@@ -59,6 +57,19 @@ async def save_local_video(file: UploadFile):
     if not metadata:
         os.remove(temp_path)
         raise HTTPException(status_code=400, detail="No se pudo procesar el archivo de video")
+
+    remote_video_path = persist_file(
+        temp_path,
+        f'storage/videos/{os.path.basename(temp_path)}',
+    )
+    remote_thumb_path = (
+        persist_file(
+            metadata['thumb_path'],
+            f"storage/thumbnails/{os.path.basename(metadata['thumb_path'])}",
+        )
+        if os.path.exists(metadata['thumb_path'])
+        else metadata['thumb_path']
+    )
 
     return {
         "hash": sha256_hash,

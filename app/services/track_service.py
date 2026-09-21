@@ -7,7 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from ..models import Video, Pista_Video, Pista_Audio
 from  .video_analysis_service import _resolve_storage_path
-from .storage_service import persist_file
+from .storage_service import ensure_local_file, persist_file
 
 
 # Rutas de almacenamiento para pistas
@@ -29,6 +29,13 @@ def resolve_original_video_path(video_db: Video):
     """Intenta encontrar el archivo original usando la ruta real o el nombre base en storage/videos."""
     if getattr(video_db, "video_path", None):
         direct_path = video_db.video_path
+        try:
+            local_path = ensure_local_file(direct_path)
+            if os.path.exists(local_path):
+                return local_path
+        except (ValueError, FileNotFoundError):
+            pass
+
         if os.path.isabs(direct_path) and os.path.exists(direct_path):
             return direct_path
 
@@ -175,6 +182,9 @@ def extract_and_clean_tracks(video_hash: str, db: Session, force: bool = False):
             "original_deleted": True
         }
 
+    except HTTPException:
+        db.rollback()
+        raise
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Error procesando pistas: {str(e)}")

@@ -2,6 +2,7 @@ import os
 import hashlib
 import subprocess
 from pathlib import Path
+from venv import logger
 import cv2
 from fastapi import HTTPException
 from sqlalchemy.exc import IntegrityError
@@ -67,6 +68,9 @@ def resolve_original_video_path(video_db: Video):
     raise HTTPException(status_code=404, detail=f"Archivo físico no encontrado en storage/videos para {video_db.nombrevideo}")
 
 def extract_and_clean_tracks(video_hash: str, db: Session, force: bool = False):
+    import logging
+
+    logger = logging.getLogger(__name__)
     # 1. Obtener el video de la base de datos
     video_db = db.query(Video).filter(Video.hash_video == video_hash).first()
     if not video_db:
@@ -94,7 +98,8 @@ def extract_and_clean_tracks(video_hash: str, db: Session, force: bool = False):
         }
 
     original_path = resolve_original_video_path(video_db)
-
+    logger.info(f"TRACKS: video localizado {original_path}")
+    logger.info(f"TRACKS: iniciando extracción de pistas para {video_hash}")
     def _build_existing_response():
         existing_video_track = db.query(Pista_Video).filter(Pista_Video.video_hash_video == video_hash).first()
         existing_audio_track = db.query(Pista_Audio).filter(Pista_Audio.video_hash_video == video_hash).first()
@@ -114,11 +119,13 @@ def extract_and_clean_tracks(video_hash: str, db: Session, force: bool = False):
         frame_count = capture.get(cv2.CAP_PROP_FRAME_COUNT) or 0
         capture.release()
         n_frames = int(frame_count)
+        logger.info(f"TRACKS: metadata video obtenida frames={n_frames}")
+        n_frames = int(frame_count)
 
         # --- EXTRACCIÓN DE AUDIO ---
         audio_filename = f"audio_{video_hash[:10]}.wav"
         audio_path = os.path.join(AUDIO_TRACKS_DIR, audio_filename)
-
+        logger.info("TRACKS: iniciando extracción audio")
         audio_result = subprocess.run(
             [
                 'ffmpeg', '-y', '-loglevel', 'error', '-threads', '1',
@@ -130,15 +137,17 @@ def extract_and_clean_tracks(video_hash: str, db: Session, force: bool = False):
         )
         if audio_result.returncode == 0 and os.path.exists(audio_path):
             audio_hash = get_file_hash(audio_path)
+            logger.info("TRACKS: subiendo audio a Supabase")
             audio_path = persist_file(audio_path, f"storage/audio_tracks/{audio_filename}")
             frecuencia = 16000
+            logger.info(f"TRACKS: extracción de audio completada audio_hash={audio_hash}")
         else:
             audio_path, audio_hash, frecuencia = None, None, 0
 
         # --- EXTRACCIÓN DE VIDEO (SIN AUDIO) ---
         video_track_filename = f"track_{video_hash[:10]}.mp4"
         video_track_path = os.path.join(VIDEO_TRACKS_DIR, video_track_filename)
-        
+        logger.info("TRACKS: iniciando extracción video")
         video_result = subprocess.run(
             [
                 'ffmpeg', '-y', '-loglevel', 'error', '-threads', '1',
@@ -154,8 +163,10 @@ def extract_and_clean_tracks(video_hash: str, db: Session, force: bool = False):
                 detail=f"No se pudo extraer la pista de video: {video_result.stderr.strip() or 'ffmpeg no generó salida'}",
             )
         video_track_hash = get_file_hash(video_track_path)
+        logger.info(f"TRACKS: extracción de video completada video_track_hash={video_track_hash}")
+        logger.info("TRACKS: subiendo video a Supabase")
         video_track_path = persist_file(video_track_path, f"storage/video_tracks/{video_track_filename}")
-
+        logger.info("TRACKS: video subido a Supabase")
         # --- GUARDAR EN BASE DE DATOS ---
         # Pista Video
         existing_video_track = db.query(Pista_Video).filter(Pista_Video.hash_pvideo == video_track_hash).first()
@@ -183,7 +194,9 @@ def extract_and_clean_tracks(video_hash: str, db: Session, force: bool = False):
             db.add(p_audio)
 
         try:
+            logger.info("TRACKS: guardando en BD")
             db.commit()
+            logger.info("TRACKS: commit exitoso")
         except IntegrityError:
             db.rollback()
             existing_response = _build_existing_response()
@@ -196,7 +209,7 @@ def extract_and_clean_tracks(video_hash: str, db: Session, force: bool = False):
         # --- LIMPIEZA ---
         if os.path.exists(original_path):
             os.remove(original_path) # Eliminar video original solo después de procesar correctamente
-
+        logger.info("TRACKS: proceso completado correctamente")
         return {
             "status": "processed",
             "pista_video_hash": video_track_hash,

@@ -15,6 +15,24 @@ services:
         value: production
       - key: SMTP_PASSWORD
         sync: false
+      - key: MODEL_PATH_AUDIO
+        value: models_ML/modelo_audio.pkl
+      - key: MODEL_PATH_VIDEO
+        value: models_ML/modelo_video.pt
+      - key: STORAGE_PATH_VIDEOS
+        value: storage/videos
+      - key: STORAGE_PATH_AUDIO
+        value: storage/audio_tracks
+      - key: STORAGE_PATH_FRAMES
+        value: storage/video_frames
+      - key: STORAGE_PATH_THUMBS
+        value: storage/thumbnails
+      - key: STORAGE_PATH_MFCC
+        value: storage/mfcc_data
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
 
 databases:
   - name: riqssi-postgres

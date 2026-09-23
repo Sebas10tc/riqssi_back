@@ -286,7 +286,16 @@ def analyze_video_track(pvideo_hash: str, db: Session):
         cap.release()
         raise HTTPException(status_code=400, detail="Video insuficiente (mínimo 150 frames).")
 
-    consume_video_analysis(user, db)
+
+    try:
+        consume_video_analysis(user, db)
+    except HTTPException as e:
+        print("=================================")
+        print("ERROR ANALYSIS")
+        print("STATUS:", e.status_code)
+        print("DETAIL:", e.detail)
+        print("=================================")
+        raise
 
     # 3. EXTRACCIÓN DE ROSTROS Y CREACIÓN DE ARCHIVO .MP4 (Usando la ruta del .env)
     os.makedirs(FRAMES_DIR, exist_ok=True)

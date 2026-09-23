@@ -61,3 +61,15 @@ def seed_memberships() -> None:
 
 if __name__ == "__main__":
     seed_memberships()
+
+
+# --- SQL equivalente para ejecutar directamente en psql/Render Postgres ---
+# INSERT INTO membresia (nombre, precio, nrovideosdiarios, plan_limit, duracionvideopermitida)
+# SELECT * FROM (VALUES
+#     ('Gratis',  0.00, 2, 2,  1),
+#     ('Básico', 10.00, 5, 5,  3),
+#     ('Premium',25.00, -1, -1, 8)
+# ) AS v(nombre, precio, nrovideosdiarios, plan_limit, duracionvideopermitida)
+# WHERE NOT EXISTS (
+#     SELECT 1 FROM membresia m WHERE m.nombre = v.nombre
+# );

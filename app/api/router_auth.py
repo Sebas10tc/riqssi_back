@@ -156,30 +156,37 @@ def require_active_membership(nombreuser: str, db: Session, video_hash: str | No
 
 
 def consume_video_analysis(user: Usuario, db: Session) -> None:
-    """Reserve one permanent analysis slot before video inference starts."""
     _expire_membership_if_needed(user, db)
+
     plan = user.membership or 'free'
+
     if user.payment_status in {'canceled', 'expired', 'denied'}:
         plan = 'free'
 
     plan_limit, _ = _get_plan_limits(plan, db)
+
     locked_user = (
         db.query(Usuario)
         .filter(Usuario.nombreuser == user.nombreuser)
         .with_for_update()
         .one()
     )
+
     analyzed_count = locked_user.videos_analyzed_count or 0
+
+    print("=================================")
+    print("USER:", user.nombreuser)
+    print("PLAN:", plan)
+    print("PLAN_LIMIT:", plan_limit)
+    print("ANALYZED_COUNT:", analyzed_count)
+    print("=================================")
+
     if plan_limit is not None and analyzed_count >= plan_limit:
         db.rollback()
         raise HTTPException(
             status_code=403,
             detail='Has alcanzado el límite de tu plan. Actualiza tu membresía para analizar más videos.',
         )
-
-    locked_user.videos_analyzed_count = analyzed_count + 1
-    db.commit()
-    user.videos_analyzed_count = locked_user.videos_analyzed_count
 
 
 def _require_admin(nombreuser: str | None, db: Session) -> Usuario:

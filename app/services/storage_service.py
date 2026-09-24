@@ -55,12 +55,26 @@ def persist_file(local_path: str | Path, storage_path: str | Path) -> str:
         file_size = Path(local_path).stat().st_size
         logger.info('Uploading %s bytes to Supabase bucket=%s object=%s', file_size, bucket, object_name)
         with open(local_path, 'rb') as source:
-            client.storage.from_(bucket).upload(
+            result = client.storage.from_(bucket).upload(
                 object_name,
                 source.read(),
-                {'upsert': 'true', 'content-type': 'application/octet-stream'},
+                {
+                    'upsert': 'true',
+                    'content-type': 'application/octet-stream',
+                },
             )
-        logger.info('Supabase upload completed: bucket=%s object=%s', bucket, object_name)
+        
+        print("=================================")
+        print("BUCKET:", bucket)
+        print("OBJECT:", object_name)
+        print("RESULT:", result)
+        print("=================================")
+        
+        logger.info(
+            'Supabase upload completed: bucket=%s object=%s',
+            bucket,
+            object_name
+        )
         return normalized_path
     except Exception:
         logger.exception('Supabase upload failed: bucket=%s object=%s', bucket, object_name)

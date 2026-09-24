@@ -187,7 +187,7 @@ def consume_video_analysis(user: Usuario, db: Session) -> None:
             status_code=403,
             detail='Has alcanzado el límite de tu plan. Actualiza tu membresía para analizar más videos.',
         )
-    
+
     locked_user.videos_analyzed_count = analyzed_count + 1
     db.commit()
     user.videos_analyzed_count = locked_user.videos_analyzed_count
@@ -716,8 +716,14 @@ def _delete_user_artifacts(db: Session, username: str) -> None:
 async def delete_account(nombreuser: str, db: Session = Depends(get_db), current_user: Usuario = Depends(get_current_user)):
     user = db.query(Usuario).filter(Usuario.nombreuser == nombreuser).first()
 
-    if current_user.nombreuser != nombreuser:
-        raise HTTPException(status_code=403, detail="No puedes eliminar otra cuenta")
+    if (
+        current_user.nombreuser != nombreuser
+        and (current_user.role or "").lower() != "admin"
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="No puedes eliminar otra cuenta"
+        )
 
     if not user:
         raise HTTPException(

@@ -10,6 +10,10 @@ from ..models import Pista_Video, Extraccion_Video, Resultado_Video
 from ..api.router_auth import consume_video_analysis, require_active_membership
 from pathlib import Path
 from .storage_service import ensure_local_file, persist_file
+import psutil
+import gc
+
+
 
 FACE_CASCADE = cv2.CascadeClassifier(
     str(Path(cv2.data.haarcascades) / 'haarcascade_frontalface_default.xml')
@@ -27,6 +31,14 @@ MODEL_PATH = os.getenv("MODEL_PATH_VIDEO")
 FRAMES_DIR = os.getenv("STORAGE_PATH_FRAMES")
 
 _VIDEO_MODEL = None
+
+
+
+def print_memory(label):
+    process = psutil.Process(os.getpid())
+    print(
+        f"{label}: {process.memory_info().rss / 1024 / 1024:.2f} MB"
+    )
 
 
 def _resolve_storage_path(path_value: str | None):
@@ -351,14 +363,17 @@ def analyze_video_track(pvideo_hash: str, db: Session):
 
     # 5. ANÁLISIS CON PYTORCH
     try:
+        print_memory("ANTES DEL MODELO")
         model = get_video_model()
+        print_memory("DESPUÉS DEL MODELO")
         transform = transforms.Compose([
             transforms.ToPILImage(),
             transforms.ToTensor(),
             transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
         ])
-        
+        print_memory("ANTES DEL STACK")
         input_tensor = torch.stack([transform(f) for f in faces_list]).unsqueeze(0).to(DEVICE)
+        print_memory("DESPUÉS DEL STACK")
         
         with torch.no_grad():
             output = model(input_tensor)
@@ -369,6 +384,16 @@ def analyze_video_track(pvideo_hash: str, db: Session):
         etiqueta = "FAKE" if label_idx.item() == 0 else "REAL"
         resultado_val = float(confidence.item())
         fake_confidence = resultado_val if etiqueta == "FAKE" else 1 - resultado_val
+        
+        del input_tensor
+        del output
+        del prediction
+        del faces_list
+        
+        gc.collect()
+        
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
         # 6. GUARDAR RESULTADOS EN BD
         nuevo_resultado = Resultado_Video(

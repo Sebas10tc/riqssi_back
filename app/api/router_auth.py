@@ -187,6 +187,10 @@ def consume_video_analysis(user: Usuario, db: Session) -> None:
             status_code=403,
             detail='Has alcanzado el límite de tu plan. Actualiza tu membresía para analizar más videos.',
         )
+    
+    locked_user.videos_analyzed_count = analyzed_count + 1
+    db.commit()
+    user.videos_analyzed_count = locked_user.videos_analyzed_count
 
 
 def _require_admin(nombreuser: str | None, db: Session) -> Usuario:

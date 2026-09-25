@@ -181,7 +181,12 @@ def consume_video_analysis(user: Usuario, db: Session) -> None:
     print("ANALYZED_COUNT:", analyzed_count)
     print("=================================")
 
-    if plan_limit is not None and analyzed_count >= plan_limit:
+    # -1 significa ilimitado
+    if (
+        plan_limit is not None
+        and plan_limit >= 0
+        and analyzed_count >= plan_limit
+    ):
         db.rollback()
         raise HTTPException(
             status_code=403,

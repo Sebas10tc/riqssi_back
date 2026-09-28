@@ -96,7 +96,7 @@ class LegacyModel(nn.Module):
 
 def video_label_from_index(label_idx: int) -> str:
     """El modelo de video fue entrenado con la clase 0 = FAKE y la 1 = REAL."""
-    return "FAKE" if int(label_idx) == 0 else "REAL"
+    return "REAL" if int(label_idx) == 0 else "FAKE"
 
 
 def _normalize_state_dict(state_dict):

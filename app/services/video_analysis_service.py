@@ -94,6 +94,11 @@ class LegacyModel(nn.Module):
         return self.linear1(pooled)
 
 
+def video_label_from_index(label_idx: int) -> str:
+    """El modelo de video fue entrenado con la clase 0 = FAKE y la 1 = REAL."""
+    return "FAKE" if int(label_idx) == 0 else "REAL"
+
+
 def _normalize_state_dict(state_dict):
     normalized = {}
     for key, value in state_dict.items():
@@ -379,9 +384,8 @@ def analyze_video_track(pvideo_hash: str, db: Session):
             output = model(input_tensor)
             prediction = torch.softmax(output, dim=1)
             confidence, label_idx = torch.max(prediction, dim=1)
-            
-        # El notebook de entrenamiento convierte FAKE -> 0 y REAL -> 1.
-        etiqueta = "FAKE" if label_idx.item() == 0 else "REAL"
+
+        etiqueta = video_label_from_index(label_idx.item())
         resultado_val = float(confidence.item())
         fake_confidence = resultado_val if etiqueta == "FAKE" else 1 - resultado_val
         

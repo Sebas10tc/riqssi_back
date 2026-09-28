@@ -11,6 +11,7 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, PROJECT_ROOT)
 
 from app.services.audio_analysis_service import _infer_mfcc_count, _predict_audio, get_pipeline
+from app.services.video_analysis_service import video_label_from_index
 
 
 def print_result(model_name, label, confidence, fake_probability):
@@ -93,8 +94,7 @@ def test_video(video_path):
         probabilities = torch.softmax(model(input_tensor), dim=1)
         confidence, label_index = torch.max(probabilities, dim=1)
 
-    # El notebook de video usa FAKE -> 0 y REAL -> 1.
-    label = "FAKE" if label_index.item() == 0 else "REAL"
+    label = video_label_from_index(label_index.item())
     confidence_value = float(confidence.item())
     fake_probability = confidence_value if label == "FAKE" else 1 - confidence_value
     print_result("MODELO DE VIDEO", label, confidence_value, fake_probability)

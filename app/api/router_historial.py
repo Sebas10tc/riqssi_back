@@ -2,7 +2,8 @@ from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy import inspect
 from sqlalchemy.orm import Session
 from ..database import get_db
-from ..models import Historial, Video, Resultado_Total
+from ..models import Historial, Video, Resultado_Total, Usuario
+from ..security import get_current_user
 from sqlalchemy import text
 
 router = APIRouter()
@@ -174,6 +175,26 @@ def get_historial(usuario_nombreuser: str, db: Session = Depends(get_db)):
             })
 
         return {"history": result}
+
+
+@router.delete("/{usuario_nombreuser}")
+def delete_all_historial(
+    usuario_nombreuser: str,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    if current_user.nombreuser != usuario_nombreuser:
+        raise HTTPException(status_code=403, detail="No puedes eliminar el historial de otro usuario")
+
+    try:
+        deleted = db.query(Historial).filter(
+            Historial.usuario_nombreuser == usuario_nombreuser
+        ).delete(synchronize_session=False)
+        db.commit()
+        return {"status": "deleted", "deleted": deleted}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"No se pudo eliminar el historial: {e}")
 
 
 @router.delete("/{usuario_nombreuser}/{idhistorial}")

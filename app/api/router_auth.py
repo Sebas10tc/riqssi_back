@@ -79,8 +79,48 @@ def _is_paid_plan(plan_value: str | None) -> bool:
     return _canonical_membership(plan_value) in {'basic', 'premium'}
 
 
-def _new_membership_expiration(plan_value: str | None):
-    return datetime.utcnow() + timedelta(days=30) if _is_paid_plan(plan_value) else None
+def _new_membership_expiration(plan_value: str | None, base: datetime | None = None):
+    if not _is_paid_plan(plan_value):
+        return None
+    start = base if base and base > datetime.utcnow() else datetime.utcnow()
+    return start + timedelta(days=30)
+
+
+def _is_admin(user: Usuario) -> bool:
+    return (user.role or '').lower() == 'admin'
+
+
+def _has_active_paid_membership(user: Usuario) -> bool:
+    expiration = user.membership_expiration
+    return _is_paid_plan(user.membership) and expiration is not None and expiration.date() >= datetime.utcnow().date()
+
+
+def _ensure_admin_premium(user: Usuario, db: Session) -> bool:
+    """Admins are always Premium, with no expiration. Returns True if the user was modified."""
+    if not _is_admin(user):
+        return False
+    if (
+        user.membership == 'premium'
+        and user.payment_status == 'approved'
+        and user.membership_expiration is None
+        and not user.membership_request
+    ):
+        return False
+
+    _assign_membership_to_user(db, user.nombreuser, 'premium', permanent=True)
+    user.membership = 'premium'
+    user.payment_status = 'approved'
+    user.membership_request = None
+    user.membership_expiration = None
+    user.membership_reminder_sent_at = None
+    db.add(user)
+    db.commit()
+    return True
+
+
+def _reject_admin_membership_change(user: Usuario) -> None:
+    if _is_admin(user):
+        raise HTTPException(status_code=400, detail='La membresía de un administrador es Premium permanente y no puede modificarse')
 
 
 def _yape_qr_url() -> str:
@@ -88,6 +128,10 @@ def _yape_qr_url() -> str:
 
 
 def _expire_membership_if_needed(user: Usuario, db: Session) -> bool:
+    if _is_admin(user):
+        _ensure_admin_premium(user, db)
+        return False
+
     expiration = user.membership_expiration
     if not expiration or expiration.date() >= datetime.utcnow().date():
         return False
@@ -126,6 +170,9 @@ def _get_plan_limits(plan: str, db: Session):
 
 
 def _enforce_plan_limits(user: Usuario, db: Session, video_hash: str | None = None) -> None:
+    if _is_admin(user):
+        return
+
     plan = user.membership or 'free'
     if user.payment_status in {'canceled', 'expired', 'denied'}:
         plan = 'free'
@@ -148,7 +195,8 @@ def require_active_membership(nombreuser: str, db: Session, video_hash: str | No
 
     _expire_membership_if_needed(user, db)
     plan = user.membership or 'free'
-    if _is_paid_plan(plan) and (user.payment_status or 'pending') != 'approved':
+    # Una renovación pendiente no bloquea una membresía vigente.
+    if _is_paid_plan(plan) and (user.payment_status or 'pending') != 'approved' and not _has_active_paid_membership(user):
         status_message = 'Tu membresía está pendiente de aprobación del pago.'
         raise HTTPException(status_code=402, detail=status_message)
     _enforce_plan_limits(user, db, video_hash)
@@ -157,6 +205,9 @@ def require_active_membership(nombreuser: str, db: Session, video_hash: str | No
 
 def consume_video_analysis(user: Usuario, db: Session) -> None:
     _expire_membership_if_needed(user, db)
+
+    if _is_admin(user):
+        return
 
     plan = user.membership or 'free'
 
@@ -246,7 +297,13 @@ def _get_membership_id_for_plan(db: Session, plan_value: str | None) -> int | No
     return int(fallback_row['idmembresia']) if fallback_row else None
 
 
-def _assign_membership_to_user(db: Session, nombreuser: str, plan_value: str | None) -> None:
+def _assign_membership_to_user(
+    db: Session,
+    nombreuser: str,
+    plan_value: str | None,
+    expires_at: datetime | None = None,
+    permanent: bool = False,
+) -> None:
     membership_id = _get_membership_id_for_plan(db, plan_value)
     if membership_id is None:
         return
@@ -258,7 +315,10 @@ def _assign_membership_to_user(db: Session, nombreuser: str, plan_value: str | N
         .first()
     )
 
-    expires_at = _new_membership_expiration(plan_value)
+    if permanent:
+        expires_at = None
+    elif expires_at is None:
+        expires_at = _new_membership_expiration(plan_value)
 
     if existing_membership:
         existing_membership.membresia_idmembresi = membership_id
@@ -322,6 +382,28 @@ def _build_profile_response(user: Usuario, membership_row):
     }
 
 
+FAKE_LABELS = {'FAKE', 'MANIPULADO', 'ALTO RIESGO'}
+
+
+def _get_verification_stats(db: Session) -> dict[str, dict[str, int]]:
+    owner = func.coalesce(Resultado_Total.usuario_nombreuser, Video.usuario_nombreuser)
+    rows = (
+        db.query(owner, Resultado_Total.etiqueta_final, func.count(Resultado_Total.idresultado_total))
+        .join(Video, Video.hash_video == Resultado_Total.video_hash_video)
+        .group_by(owner, Resultado_Total.etiqueta_final)
+        .all()
+    )
+    stats: dict[str, dict[str, int]] = {}
+    for username, label, count in rows:
+        if not username:
+            continue
+        entry = stats.setdefault(username, {'total': 0, 'fake': 0, 'real': 0})
+        bucket = 'fake' if str(label or '').strip().upper() in FAKE_LABELS else 'real'
+        entry[bucket] += int(count)
+        entry['total'] += int(count)
+    return stats
+
+
 @router.get('/admin/dashboard-summary', tags=['Admin'])
 def get_admin_dashboard_summary(db: Session = Depends(get_db), _admin: Usuario = Depends(require_admin)):
     total_users = db.query(func.count(Usuario.nombreuser)).scalar() or 0
@@ -371,11 +453,13 @@ def get_admin_dashboard_summary(db: Session = Depends(get_db), _admin: Usuario =
             latest_memberships[row["usuario_nombreuser"]] = row
 
     users = []
+    verification_stats = _get_verification_stats(db)
     all_users = db.query(Usuario).order_by(Usuario.nombre.asc(), Usuario.nombreuser.asc()).all()
     for user in all_users:
         membership_row = latest_memberships.get(user.nombreuser)
         users.append({
             'nombreuser': user.nombreuser,
+            'verifications': verification_stats.get(user.nombreuser, {'total': 0, 'fake': 0, 'real': 0}),
             'nombre': user.nombre,
             'apellido': user.apellido,
             'correo': user.correo,
@@ -456,6 +540,7 @@ def update_user_membership(nombreuser: str, payload: dict, db: Session = Depends
     user = db.query(Usuario).filter(Usuario.nombreuser == nombreuser).first()
     if not user:
         raise HTTPException(status_code=404, detail='Usuario no encontrado')
+    _reject_admin_membership_change(user)
 
     membership = db.execute(
         text(
@@ -855,6 +940,7 @@ async def register(payload: UsuarioCreate, db: Session = Depends(get_db)):
         user.membership_reminder_sent_at = None
         db.commit()
         db.refresh(user)
+        _ensure_admin_premium(user, db)
     except Exception as error:
         db.rollback()
         raise HTTPException(
@@ -1020,19 +1106,23 @@ def get_admin_system_status(db: Session = Depends(get_db), _admin: Usuario = Dep
 @router.post('/membership/payment', tags=['Memberships'])
 async def submit_membership_payment(
     nombreuser: str = Form(...),
-    operation_code: str = Form(...),
-    proof: UploadFile = File(...),
+    operation_code: str | None = Form(None),
+    proof: UploadFile | None = File(None),
     db: Session = Depends(get_db),
 ):
     user = db.query(Usuario).filter(Usuario.nombreuser == nombreuser).first()
     if not user:
         raise HTTPException(status_code=404, detail='Usuario no encontrado')
+    _reject_admin_membership_change(user)
 
-    membership = _get_latest_membership_row(db, nombreuser)
+    if not (operation_code or '').strip() or proof is None or not (proof.filename or '').strip():
+        raise HTTPException(
+            status_code=400,
+            detail='El código de operación y la imagen del comprobante son obligatorios',
+        )
+
     if not user.membership_request or not _is_paid_plan(user.membership_request):
         raise HTTPException(status_code=400, detail='El usuario no tiene una membresía de pago seleccionada')
-    if not operation_code.strip():
-        raise HTTPException(status_code=400, detail='El código de operación es obligatorio')
 
     extension = Path(proof.filename or '').suffix.lower()
     if extension not in {'.jpg', '.jpeg', '.png', '.pdf'}:
@@ -1063,14 +1153,16 @@ def select_membership(payload: dict, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail='Usuario no encontrado')
     if _normalize_membership_label(plan) not in {'gratis', 'basico', 'premium'}:
         raise HTTPException(status_code=400, detail='Membresía inválida')
+    _reject_admin_membership_change(user)
 
     requested_membership = _canonical_membership(plan)
-    active_membership = requested_membership if requested_membership == 'free' else 'free'
-    _assign_membership_to_user(db, nombreuser, 'gratis')
-    user.membership = active_membership
+    is_renewal = requested_membership != 'free' and _has_active_paid_membership(user)
+    if not is_renewal:
+        _assign_membership_to_user(db, nombreuser, 'gratis')
+        user.membership = 'free'
+        user.membership_expiration = None
     user.membership_request = None if requested_membership == 'free' else requested_membership
     user.payment_status = 'pending' if requested_membership != 'free' else 'approved'
-    user.membership_expiration = None
     user.membership_reminder_sent_at = None
     user.payment_proof_path = None
     user.payment_operation_code = None
@@ -1091,6 +1183,7 @@ def cancel_membership(payload: dict, db: Session = Depends(get_db)):
     user = db.query(Usuario).filter(Usuario.nombreuser == nombreuser).first()
     if not user:
         raise HTTPException(status_code=404, detail='Usuario no encontrado')
+    _reject_admin_membership_change(user)
 
     current_membership = _get_latest_membership_row(db, nombreuser)
     if not _is_paid_plan(user.membership):
@@ -1142,15 +1235,23 @@ def review_membership_payment(nombreuser: str, payload: dict, db: Session = Depe
         raise HTTPException(status_code=404, detail='Usuario no encontrado')
 
     requested_membership = user.membership_request
+    is_renewal = _has_active_paid_membership(user)
     user.payment_status = decision
     user.payment_reviewed_at = datetime.utcnow()
     if decision == 'approved':
         if not _is_paid_plan(requested_membership):
             raise HTTPException(status_code=400, detail='El usuario no tiene una solicitud de pago pendiente')
-        _assign_membership_to_user(db, nombreuser, requested_membership)
+        new_expiration = _new_membership_expiration(
+            requested_membership,
+            base=user.membership_expiration if is_renewal else None,
+        )
+        _assign_membership_to_user(db, nombreuser, requested_membership, expires_at=new_expiration)
         user.membership = _canonical_membership(requested_membership)
-        user.membership_expiration = _new_membership_expiration(requested_membership)
+        user.membership_expiration = new_expiration
         user.membership_reminder_sent_at = None
+    elif is_renewal:
+        user.payment_status = 'approved'
+        user.membership_request = None
     else:
         _assign_membership_to_user(db, nombreuser, 'gratis')
         user.membership = 'free'

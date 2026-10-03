@@ -1,6 +1,8 @@
 import os
+import base64
 import hashlib
 import logging
+import tempfile
 from pathlib import Path
 
 import cv2
@@ -45,10 +47,25 @@ def _build_base_ydl_opts():
     }
 
 
+def _cookiefile_from_base64_env():
+    """Materializa cookies.txt desde YTDLP_COOKIES_B64 (útil en hostings sin acceso a archivos)."""
+    encoded = (os.getenv('YTDLP_COOKIES_B64') or '').strip()
+    if not encoded:
+        return None
+
+    target = Path(tempfile.gettempdir()) / 'riqssi_yt_cookies.txt'
+    try:
+        target.write_bytes(base64.b64decode(encoded))
+    except Exception:
+        logger.warning('YTDLP_COOKIES_B64 no es base64 válido; se ignora.')
+        return None
+    return str(target)
+
+
 def _build_cookie_attempts():
     attempts = []
 
-    cookiefile = os.getenv('YTDLP_COOKIEFILE') or os.getenv('YT_DLP_COOKIEFILE')
+    cookiefile = os.getenv('YTDLP_COOKIEFILE') or os.getenv('YT_DLP_COOKIEFILE') or _cookiefile_from_base64_env()
     if cookiefile:
         if os.path.isabs(cookiefile):
             attempts.append({'cookiefile': cookiefile})
@@ -75,6 +92,8 @@ def _build_extractor_attempts(url: str):
         return [
             {},
             {'extractor_args': {'youtube': {'player_client': ['web_safari']}}},
+            {'extractor_args': {'youtube': {'player_client': ['mweb']}}},
+            {'extractor_args': {'youtube': {'player_client': ['tv']}}},
             {'extractor_args': {'youtube': {'player_client': ['android']}}},
             {'extractor_args': {'youtube': {'player_client': ['ios']}}},
         ]
@@ -93,6 +112,10 @@ def _build_extractor_attempts(url: str):
 
 def _build_network_attempts():
     attempts = [{}]
+
+    proxy = (os.getenv('YTDLP_PROXY') or '').strip()
+    if proxy:
+        attempts.insert(0, {'proxy': proxy})
 
     if (os.getenv('YTDLP_FORCE_IPV4') or os.getenv('YT_DLP_FORCE_IPV4') or '').strip().lower() in {'1', 'true', 'yes', 'on'}:
         attempts.append({'source_address': '0.0.0.0'})

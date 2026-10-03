@@ -509,6 +509,11 @@ def get_admin_dashboard_summary(db: Session = Depends(get_db), _admin: Usuario =
         'total_users': int(total_users),
         'premium_plans': int(premium_plans),
         'analyses_done': int(analyses_done),
+        'verifications': {
+            'fake': sum(stats['fake'] for stats in verification_stats.values()),
+            'real': sum(stats['real'] for stats in verification_stats.values()),
+            'total': sum(stats['total'] for stats in verification_stats.values()),
+        },
         'activity_total': int(activity_total),
         'users': users,
         'memberships': [
@@ -598,6 +603,30 @@ def update_user_membership(nombreuser: str, payload: dict, db: Session = Depends
         'nombreuser': nombreuser,
         'membership_id': membership.idmembresia,
     }
+
+
+@router.patch('/admin/users/{nombreuser}/role', tags=['Admin'])
+def update_user_role(nombreuser: str, payload: dict, db: Session = Depends(get_db), admin: Usuario = Depends(require_admin)):
+    new_role = str(payload.get('role', '')).strip().lower()
+    if new_role not in {'admin', 'user'}:
+        raise HTTPException(status_code=400, detail="El rol debe ser 'admin' o 'user'")
+
+    user = db.query(Usuario).filter(Usuario.nombreuser == nombreuser).first()
+    if not user:
+        raise HTTPException(status_code=404, detail='Usuario no encontrado')
+    if user.nombreuser == admin.nombreuser and new_role != 'admin':
+        raise HTTPException(status_code=400, detail='No puedes quitarte tu propio rol de administrador')
+
+    try:
+        user.role = new_role
+        db.add(user)
+        db.commit()
+        _ensure_admin_premium(user, db)
+    except Exception as error:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f'No se pudo actualizar el rol: {error}')
+
+    return {'status': 'updated', 'nombreuser': nombreuser, 'role': new_role}
 
 
 @router.get('/admin/activity', tags=['Admin'])

@@ -18,5 +18,6 @@ COPY models_ML/modelo_audio.pkl ./models_ML/modelo_audio.pkl
 COPY models_ML/modelo_video.pt ./models_ML/modelo_video.pt
 RUN mkdir -p storage/audio_tracks storage/mfcc_data storage/payment_proofs \
     storage/thumbnails storage/video_frames storage/video_tracks storage/videos
+COPY storage/yape ./storage/yape
 
 CMD sh -c 'alembic -c /app/alembic.ini upgrade head && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}'

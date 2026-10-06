@@ -22,6 +22,7 @@ class Usuario(Base):
     membership_expiration = Column(DateTime)
     membership_reminder_sent_at = Column(DateTime)
     videos_analyzed_count = Column(Integer, nullable=False, default=0)
+    videos_analyzed_date = Column(Date)
     
     # Relaciones
     videos = relationship("Video", back_populates="usuario")

@@ -224,6 +224,11 @@ def consume_video_analysis(user: Usuario, db: Session) -> None:
     )
 
     analyzed_count = locked_user.videos_analyzed_count or 0
+    today = datetime.utcnow().date()
+    # El límite del plan es diario: el contador se reinicia cada día.
+    if locked_user.videos_analyzed_date != today:
+        analyzed_count = 0
+        locked_user.videos_analyzed_date = today
 
     print("=================================")
     print("USER:", user.nombreuser)
@@ -1166,6 +1171,7 @@ async def submit_membership_payment(
 
     filename = f'{user.nombreuser}_{datetime.utcnow().strftime("%Y%m%d%H%M%S")}{extension}'
     proof_path = PAYMENT_PROOF_DIR / filename
+    PAYMENT_PROOF_DIR.mkdir(parents=True, exist_ok=True)
     with proof_path.open('wb') as destination:
         shutil.copyfileobj(proof.file, destination)
 
@@ -1285,6 +1291,8 @@ def review_membership_payment(nombreuser: str, payload: dict, db: Session = Depe
         user.membership = _canonical_membership(requested_membership)
         user.membership_expiration = new_expiration
         user.membership_reminder_sent_at = None
+        user.videos_analyzed_count = 0
+        user.videos_analyzed_date = datetime.utcnow().date()
     elif is_renewal:
         user.payment_status = 'approved'
         user.membership_request = None

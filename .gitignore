@@ -9,6 +9,7 @@ __pycache__/
 venv/
 storage/*
 !storage/.gitkeep
+!storage/yape/
 tmp_*
 *.sqlite3
 *.db

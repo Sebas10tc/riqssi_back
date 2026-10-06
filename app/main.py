@@ -1,14 +1,16 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 import asyncio
 import os
+from pathlib import Path
 from .database import engine, SessionLocal
 from . import models
 
 # Importamos todos los routers que hemos creado
 from .api import router_auth, router_video, router_tracks, router_audio_analysis, router_video_analysis, router_link, router_final, router_historial
 from .services.membership_reminder_service import run_membership_reminder_loop
+from .services.storage_service import ensure_local_file
 
 app = FastAPI(
     title="Deepfake Detection System API",
@@ -63,9 +65,28 @@ app.include_router(router_audio_analysis.router, prefix="/audio-analysis", tags=
 app.include_router(router_final.router, prefix="/analysis", tags=["Resultado Final"])
 app.include_router(router_historial.router, prefix="/historial", tags=["Historial"])
 
-storage_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "storage"))
-if os.path.exists(storage_dir):
-    app.mount("/storage", StaticFiles(directory=storage_dir), name="storage")
+storage_dir = Path(__file__).resolve().parents[1] / "storage"
+# Solo se sirven carpetas usadas por el frontend; el resto de buckets (audio, MFCC, pistas) no se exponen.
+PUBLIC_STORAGE_FOLDERS = {"videos", "thumbnails", "video_frames", "yape", "payment_proofs"}
+
+
+@app.get("/storage/{file_path:path}", include_in_schema=False)
+def serve_storage_file(file_path: str):
+    target = (storage_dir / file_path).resolve()
+    root = storage_dir.resolve()
+    if root not in target.parents or target.relative_to(root).parts[0] not in PUBLIC_STORAGE_FOLDERS:
+        raise HTTPException(status_code=404, detail="Archivo no encontrado")
+
+    if not target.is_file():
+        # En Render el disco es efímero: se recupera el archivo desde Supabase.
+        try:
+            ensure_local_file(f"storage/{target.relative_to(root).as_posix()}")
+        except Exception:
+            raise HTTPException(status_code=404, detail="Archivo no encontrado")
+
+    if not target.is_file():
+        raise HTTPException(status_code=404, detail="Archivo no encontrado")
+    return FileResponse(target)
 
 
 @app.get("/")

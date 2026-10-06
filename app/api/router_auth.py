@@ -658,6 +658,19 @@ def get_admin_activity(limit: int = Query(100, ge=1, le=1000), db: Session = Dep
     }
 
 
+def _send_smtp(host: str, port: int, user: str, password: str, message: EmailMessage) -> None:
+    # Puerto 465 usa SSL implícito; otros usan STARTTLS.
+    if port == 465:
+        with smtplib.SMTP_SSL(host, port, timeout=30) as server:
+            server.login(user, password)
+            server.send_message(message)
+        return
+    with smtplib.SMTP(host, port, timeout=30) as server:
+        server.starttls()
+        server.login(user, password)
+        server.send_message(message)
+
+
 def send_recovery_email(recipient_email: str, temporary_password: str) -> None:
     smtp_host = os.getenv("SMTP_HOST", "smtp.gmail.com")
     smtp_port = int(os.getenv("SMTP_PORT", "587"))
@@ -695,10 +708,7 @@ Equipo RIQSSI
 """.format(frontend_url=frontend_url, temporary_password=temporary_password)
     )
 
-    with smtplib.SMTP(smtp_host, smtp_port, timeout=30) as server:
-        server.starttls()
-        server.login(smtp_user, smtp_password)
-        server.send_message(message)
+    _send_smtp(smtp_host, smtp_port, smtp_user, smtp_password, message)
 
 
 def send_membership_expiration_reminder(user: Usuario) -> None:
@@ -734,10 +744,7 @@ def send_membership_expiration_reminder(user: Usuario) -> None:
             maintype, subtype = 'image', qr_path.suffix.lstrip('.').lower() or 'png'
         message.add_attachment(qr_path.read_bytes(), maintype=maintype, subtype=subtype, filename=qr_path.name)
 
-    with smtplib.SMTP(smtp_host, smtp_port, timeout=30) as server:
-        server.starttls()
-        server.login(smtp_user, smtp_password)
-        server.send_message(message)
+    _send_smtp(smtp_host, smtp_port, smtp_user, smtp_password, message)
 
 
 def _project_root() -> Path:

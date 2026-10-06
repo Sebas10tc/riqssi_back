@@ -67,10 +67,18 @@ def _build_cookie_attempts():
 
     cookiefile = os.getenv('YTDLP_COOKIEFILE') or os.getenv('YT_DLP_COOKIEFILE') or _cookiefile_from_base64_env()
     if cookiefile:
-        if os.path.isabs(cookiefile):
-            attempts.append({'cookiefile': cookiefile})
+        cookiefile = os.path.abspath(cookiefile)
+        # yt-dlp reescribe el archivo al cerrar; los Secret Files de Render son de solo lectura.
+        if os.path.isfile(cookiefile):
+            writable = Path(tempfile.gettempdir()) / 'riqssi_yt_cookies_rw.txt'
+            try:
+                writable.write_bytes(Path(cookiefile).read_bytes())
+                cookiefile = str(writable)
+            except OSError:
+                logger.warning('No se pudo copiar el archivo de cookies; se usa el original.')
         else:
-            attempts.append({'cookiefile': os.path.abspath(cookiefile)})
+            logger.warning('YTDLP_COOKIEFILE no existe: %s', cookiefile)
+        attempts.append({'cookiefile': cookiefile})
 
     browser = (os.getenv('YTDLP_COOKIE_BROWSER') or os.getenv('YT_DLP_COOKIE_BROWSER') or '').strip().lower()
     profile = (os.getenv('YTDLP_COOKIE_PROFILE') or os.getenv('YT_DLP_COOKIE_PROFILE') or '').strip()
@@ -332,10 +340,9 @@ def process_video_download(url: str):
         raise HTTPException(
             status_code=403,
             detail=(
-                "Autenticación requerida para descargar desde YouTube. "
-                "Configura YTDLP_COOKIEFILE con un archivo cookies.txt válido exportado desde tu navegador. "
-                "Si quieres usar cookies del navegador directamente, define YTDLP_COOKIE_BROWSER y opcionalmente YTDLP_COOKIE_PROFILE. "
-                "Más información: https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp"
+                "YouTube bloqueó la descarga desde este servidor. "
+                "Configura YTDLP_COOKIES_B64 (cookies.txt en base64) o YTDLP_COOKIEFILE y, si persiste, "
+                "YTDLP_PROXY con un proxy residencial. Las cookies caducan: vuelve a exportarlas si dejan de funcionar."
             ),
         )
 

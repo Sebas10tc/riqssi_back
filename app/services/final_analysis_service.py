@@ -93,7 +93,7 @@ def process_final_verdict(video_hash: str, db: Session, usuario_nombreuser: str 
             if not pista_video:
                 raise HTTPException(status_code=400, detail="Falta la pista de video para poder analizar.")
             try:
-                analyze_video_track(pista_video.hash_pvideo, db)
+                analyze_video_track(pista_video.hash_pvideo, db, usuario_nombreuser)
             except HTTPException as e:
                 raise HTTPException(status_code=500, detail=f"Error al analizar video automáticamente: {e.detail}")
 

@@ -1,4 +1,4 @@
-import os
+﻿import os
 import cv2
 import torch
 import torch.nn as nn
@@ -212,7 +212,7 @@ def get_video_model():
     return _VIDEO_MODEL
 
 
-def validate_video_track(pvideo_hash: str, db: Session):
+def validate_video_track(pvideo_hash: str, db: Session, nombreuser: str | None = None):
     """Verifica que la pista exista, se pueda abrir y tenga suficientes frames."""
     pista = db.query(Pista_Video).filter(Pista_Video.hash_pvideo == pvideo_hash).first()
     if not pista:
@@ -221,7 +221,7 @@ def validate_video_track(pvideo_hash: str, db: Session):
     if not pista.video or not pista.video.usuario_nombreuser:
         raise HTTPException(status_code=400, detail="El video no tiene un usuario asociado.")
 
-    user = require_active_membership(pista.video.usuario_nombreuser, db, pista.video.hash_video)
+    user = require_active_membership(nombreuser or pista.video.usuario_nombreuser, db, pista.video.hash_video)
 
     video_path = _resolve_video_track_path(pista, db)
 
@@ -267,7 +267,7 @@ def validate_video_track(pvideo_hash: str, db: Session):
 
 
 # --- LÓGICA PRINCIPAL DE ANÁLISIS ---
-def analyze_video_track(pvideo_hash: str, db: Session):
+def analyze_video_track(pvideo_hash: str, db: Session, nombreuser: str | None = None):
     # 1. Ejecutar la validación básica antes de continuar con la inferencia
     pista = db.query(Pista_Video).filter(Pista_Video.hash_pvideo == pvideo_hash).first()
     if not pista:
@@ -276,7 +276,7 @@ def analyze_video_track(pvideo_hash: str, db: Session):
     if not pista.video or not pista.video.usuario_nombreuser:
         raise HTTPException(status_code=400, detail="El video no tiene un usuario asociado.")
 
-    user = require_active_membership(pista.video.usuario_nombreuser, db, pista.video.hash_video)
+    user = require_active_membership(nombreuser or pista.video.usuario_nombreuser, db, pista.video.hash_video)
 
     video_path = _resolve_video_track_path(pista, db)
 

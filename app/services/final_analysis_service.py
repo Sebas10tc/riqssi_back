@@ -75,11 +75,11 @@ def process_final_verdict(video_hash: str, db: Session, usuario_nombreuser: str 
     if usuario_nombreuser and has_user_column:
         user_has_total = db.query(Resultado_Total).filter(Resultado_Total.video_hash_video == video_hash, Resultado_Total.usuario_nombreuser == usuario_nombreuser).first() is not None
 
-    if missing or (usuario_nombreuser and not user_has_total):
+    if missing:
         # Intentamos ejecutar los análisis faltantes automáticamente.
         # Si no existe la pista correspondiente, reportamos como error.
         # Ejecutar audio incluso si ya existe globalmente si el usuario no tiene su propio resultado
-        if "audio" in missing or (usuario_nombreuser and not user_has_total):
+        if "audio" in missing:
             pista_audio = db.query(Pista_Audio).filter(Pista_Audio.video_hash_video == video_hash).first()
             if not pista_audio:
                 raise HTTPException(status_code=400, detail="Falta la pista de audio para poder analizar.")
@@ -88,7 +88,7 @@ def process_final_verdict(video_hash: str, db: Session, usuario_nombreuser: str 
             except HTTPException as e:
                 raise HTTPException(status_code=500, detail=f"Error al analizar audio automáticamente: {e.detail}")
 
-        if "video" in missing or (usuario_nombreuser and not user_has_total):
+        if "video" in missing:
             pista_video = db.query(Pista_Video).filter(Pista_Video.video_hash_video == video_hash).first()
             if not pista_video:
                 raise HTTPException(status_code=400, detail="Falta la pista de video para poder analizar.")

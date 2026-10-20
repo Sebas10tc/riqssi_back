@@ -28,7 +28,7 @@ async def get_final_verdict(video_hash: str, db: Session = Depends(get_db), forc
     """
     if not nombreuser:
         raise HTTPException(status_code=400, detail='Se requiere el usuario para validar la membresía')
-    require_active_membership(nombreuser, db)
+    require_active_membership(nombreuser, db, video_hash)
     has_user_column = _resultado_total_has_user_column(db)
 
     if force:

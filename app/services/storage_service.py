@@ -47,10 +47,7 @@ def persist_file(local_path: str | Path, storage_path: str | Path) -> str:
 
     client = _client()
     if not client:
-        if os.getenv('APP_ENV', '').lower() in {'production', 'prod'}:
-            raise RuntimeError('SUPABASE_URL y SUPABASE_SERVICE_ROLE_KEY no están configuradas en Render')
-        logger.info('Storage local fallback: %s', normalized_path)
-        return normalized_path
+        raise RuntimeError('SUPABASE_URL y SUPABASE_SERVICE_ROLE_KEY no están configuradas')
 
     bucket, object_name = _storage_key(normalized_path)
     try:

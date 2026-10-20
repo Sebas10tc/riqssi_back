@@ -31,6 +31,10 @@ def _client():
 
 def _storage_key(path_value: str | Path) -> tuple[str, str]:
     normalized = str(path_value).replace('\\', '/').lstrip('/')
+    # Rutas absolutas guardadas antes (p. ej. /app/storage/video_tracks/x.mp4).
+    marker = normalized.rfind('storage/')
+    if marker != -1 and (marker == 0 or normalized[marker - 1] == '/'):
+        normalized = normalized[marker:]
     if normalized.startswith('storage/'):
         normalized = normalized[len('storage/'):]
     bucket_name, _, object_name = normalized.partition('/')

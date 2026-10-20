@@ -81,21 +81,19 @@ def process_final_verdict(video_hash: str, db: Session, usuario_nombreuser: str 
         # Ejecutar audio incluso si ya existe globalmente si el usuario no tiene su propio resultado
         if "audio" in missing:
             pista_audio = db.query(Pista_Audio).filter(Pista_Audio.video_hash_video == video_hash).first()
-            if not pista_audio:
-                raise HTTPException(status_code=400, detail="Falta la pista de audio para poder analizar.")
-            try:
-                analyze_audio_track(pista_audio.hash_paudio, db)
-            except HTTPException as e:
-                raise HTTPException(status_code=500, detail=f"Error al analizar audio automáticamente: {e.detail}")
+            if pista_audio:
+                try:
+                    analyze_audio_track(pista_audio.hash_paudio, db)
+                except HTTPException as e:
+                    raise HTTPException(status_code=500, detail=f"Error al analizar audio automáticamente: {e.detail}")
 
         if "video" in missing:
             pista_video = db.query(Pista_Video).filter(Pista_Video.video_hash_video == video_hash).first()
-            if not pista_video:
-                raise HTTPException(status_code=400, detail="Falta la pista de video para poder analizar.")
-            try:
-                analyze_video_track(pista_video.hash_pvideo, db, usuario_nombreuser)
-            except HTTPException as e:
-                raise HTTPException(status_code=500, detail=f"Error al analizar video automáticamente: {e.detail}")
+            if pista_video:
+                try:
+                    analyze_video_track(pista_video.hash_pvideo, db, usuario_nombreuser)
+                except HTTPException as e:
+                    raise HTTPException(status_code=500, detail=f"Error al analizar video automáticamente: {e.detail}")
 
         # Después de forzar los análisis, reconsultamos los resultados (tomando los más recientes)
         res_audio = db.query(Resultado_Audio).join(Extraccion_Audio).join(Pista_Audio)\
@@ -103,31 +101,29 @@ def process_final_verdict(video_hash: str, db: Session, usuario_nombreuser: str 
         res_video = db.query(Resultado_Video).join(Extraccion_Video).join(Pista_Video)\
             .filter(Pista_Video.video_hash_video == video_hash).order_by(Resultado_Video.idresultado_v.desc()).first()
 
-        # Si aún falta alguno, devolvemos error claro.
-        still_missing = []
-        if not res_audio:
-            still_missing.append("audio")
-        if not res_video:
-            still_missing.append("video")
-        if still_missing:
-            raise HTTPException(status_code=500, detail=f"No se pudieron generar los análisis faltantes: {' y '.join(still_missing)}")
+        # Basta con un resultado; solo falla si no hay ninguno.
+        if not res_audio and not res_video:
+            raise HTTPException(status_code=400, detail="No hay pistas de audio ni de video para analizar.")
 
-    # 2. Calcular promedio y etiqueta — ambos resultados existen
-    try:
-        score_audio = float(res_audio.prediccion_rf)
-    except Exception:
-        raise HTTPException(status_code=400, detail="Resultado de audio inválido o vacío.")
+    # 2. Promedio sobre los resultados disponibles (audio, video o ambos)
+    score_audio = None
+    score_video = None
+    if res_audio:
+        try:
+            score_audio = float(res_audio.prediccion_rf)
+        except Exception:
+            raise HTTPException(status_code=400, detail="Resultado de audio inválido o vacío.")
+    if res_video:
+        try:
+            score_video = float(res_video.resultado)
+        except Exception:
+            raise HTTPException(status_code=400, detail="Resultado de video inválido o vacío.")
 
-    try:
-        score_video = float(res_video.resultado)
-    except Exception:
-        raise HTTPException(status_code=400, detail="Resultado de video inválido o vacío.")
-
-    # Cada resultado guarda la confianza de su clase ganadora. Para combinar audio y
-    # video debemos llevar ambos valores a la misma escala: probabilidad de FAKE.
-    audio_fake_probability = score_audio if res_audio.etiqueta == "FAKE" else 1 - score_audio
-    video_fake_probability = score_video if res_video.etiqueta == "FAKE" else 1 - score_video
-    veredicto = (audio_fake_probability + video_fake_probability) / 2
+    # Cada resultado guarda la confianza de su clase ganadora; se lleva a probabilidad de FAKE.
+    audio_fake_probability = None if score_audio is None else (score_audio if res_audio.etiqueta == "FAKE" else 1 - score_audio)
+    video_fake_probability = None if score_video is None else (score_video if res_video.etiqueta == "FAKE" else 1 - score_video)
+    available = [p for p in (audio_fake_probability, video_fake_probability) if p is not None]
+    veredicto = sum(available) / len(available)
     etiqueta = "FAKE" if veredicto >= 0.5 else "REAL"
 
     # 3. Guardar en Resultado_Total (asociado al usuario que solicitó) — solo si la columna existe
@@ -166,12 +162,12 @@ def process_final_verdict(video_hash: str, db: Session, usuario_nombreuser: str 
         "status": "finalized",
         "veredicto_final": f"{veredicto:.4f}",
         "etiqueta": etiqueta,
-        "audio": {
+        "audio": None if res_audio is None else {
             "etiqueta": res_audio.etiqueta,
             "confianza": f"{score_audio * 100:.2f}%",
             "probabilidad_fake": f"{audio_fake_probability:.4f}",
         },
-        "video": {
+        "video": None if res_video is None else {
             "etiqueta": res_video.etiqueta,
             "confianza": f"{score_video * 100:.2f}%",
             "probabilidad_fake": f"{video_fake_probability:.4f}",

@@ -180,7 +180,16 @@ def _enforce_plan_limits(user: Usuario, db: Session, video_hash: str | None = No
     _, duration_limit_minutes = _get_plan_limits(plan, db)
 
     if video_hash and duration_limit_minutes:
-        video = db.query(Video).filter(Video.hash_video == video_ha if video and video.duracion and video.duracion > duration_limit_mi     raise HTT         statu         detail=f'El video supera el límite de {duration_limit_minutes} minuto(s) del plauire_active_membership(nombreuser: str, db: Session, video_hash: str | None = None) r = db.query(Usuario).filter(Usuario.nombreuser == nombreus raise HTTPException(status_code=404, detail='Usuario no encontrado')
+        video = db.query(Video).filter(Video.hash_video == video_hash).first()
+    if video and video.duracion and video.duracion > duration_limit_minutes * 60:
+        raise HTTPException(
+            status_code=403,
+            detail=f'El video supera el límite de {duration_limit_minutes} minuto(s) del plan {plan}.',
+        )
+def require_active_membership(nombreuser: str, db: Session, video_hash: str | None = None) -> Usuario:
+    user = db.query(Usuario).filter(Usuario.nombreuser == nombreuser).first()
+    if not user:
+        raise HTTPException(status_code=404, detail='Usuario no encontrado')
 
     _expire_membership_if_needed(user, db)
     plan = user.membership or 'free'

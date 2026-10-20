@@ -39,8 +39,11 @@ def get_video_metadata(file_path):
 
 async def save_local_video(file: UploadFile):
     # Validar extensión
-    if not file.filename.endswith('.mp4'):
+    if not file.filename.lower().endswith('.mp4'):
         raise HTTPException(status_code=400, detail="Solo se admiten archivos .mp4")
+
+    os.makedirs(VIDEO_DIR, exist_ok=True)
+    os.makedirs(THUMB_DIR, exist_ok=True)
 
     # Guardar temporalmente para calcular Hash y Metadatos
     temp_path = os.path.join(VIDEO_DIR, file.filename)

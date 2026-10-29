@@ -6,6 +6,7 @@ from .storage_service import persist_file
 
 VIDEO_DIR = "storage/videos"
 THUMB_DIR = "storage/thumbnails"
+UPLOAD_CHUNK_SIZE = 1024 * 1024
 
 def get_video_metadata(file_path):
     """Extrae duración, resolución y genera una miniatura."""
@@ -37,23 +38,33 @@ def get_video_metadata(file_path):
         "thumb_path": thumb_path
     }
 
-async def save_local_video(file: UploadFile):
+async def save_local_video(file: UploadFile, max_size_bytes: int, plan_name: str):
     # Validar extensión
-    if not file.filename.lower().endswith('.mp4'):
+    if not file.filename or not file.filename.lower().endswith('.mp4'):
         raise HTTPException(status_code=400, detail="Solo se admiten archivos .mp4")
 
     os.makedirs(VIDEO_DIR, exist_ok=True)
     os.makedirs(THUMB_DIR, exist_ok=True)
 
-    # Guardar temporalmente para calcular Hash y Metadatos
     temp_path = os.path.join(VIDEO_DIR, file.filename)
-    with open(temp_path, "wb") as buffer:
-        content = await file.read()
-        buffer.write(content)
+    sha256 = hashlib.sha256()
+    file_size = 0
+    try:
+        with open(temp_path, "wb") as buffer:
+            while content := await file.read(UPLOAD_CHUNK_SIZE):
+                file_size += len(content)
+                if file_size > max_size_bytes:
+                    raise HTTPException(
+                        status_code=413,
+                        detail=f"El archivo supera el límite de {max_size_bytes // (1024 * 1024)} MB del plan {plan_name}.",
+                    )
+                buffer.write(content)
+                sha256.update(content)
+    except Exception:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+        raise
 
-    # Calcular Hash SHA-256
-    sha256_hash = hashlib.sha256(content).hexdigest()
-    
     # Extraer Metadatos
     metadata = get_video_metadata(temp_path)
     
@@ -75,7 +86,7 @@ async def save_local_video(file: UploadFile):
     )
 
     return {
-        "hash": sha256_hash,
+        "hash": sha256.hexdigest(),
         "filename": file.filename,
         "path": remote_video_path,
         "thumb_path": remote_thumb_path,

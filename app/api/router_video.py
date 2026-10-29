@@ -1,7 +1,7 @@
-from fastapi import APIRouter, Depends, File, UploadFile, Form
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, Form
 from sqlalchemy.orm import Session
 from ..database import get_db
-from ..models import Video
+from ..models import Usuario, Video
 from ..services.video_service import save_local_video
 import datetime
 
@@ -13,8 +13,30 @@ async def upload_video(
     nombreuser: str = Form(...), # Recibido como campo de formulario
     db: Session = Depends(get_db)
 ):
+    user = db.query(Usuario).filter(Usuario.nombreuser == nombreuser).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+
+    plan = user.membership or "free"
+    if (user.role or "").lower() == "admin":
+        plan = "premium"
+    elif user.payment_status in {"canceled", "expired", "denied"}:
+        plan = "free"
+    elif user.membership_expiration and user.membership_expiration.date() < datetime.datetime.utcnow().date():
+        plan = "free"
+
+    plan_limits = {
+        "free": (3, "Gratis"),
+        "gratis": (3, "Gratis"),
+        "basic": (4, "Básico"),
+        "basico": (4, "Básico"),
+        "básico": (4, "Básico"),
+        "premium": (5, "Premium"),
+    }
+    limit_mb, plan_name = plan_limits.get(plan.strip().casefold(), plan_limits["free"])
+
     # 1. Procesar y guardar el archivo físicamente
-    video_info = await save_local_video(file)
+    video_info = await save_local_video(file, limit_mb * 1024 * 1024, plan_name)
 
     # 2. Verificar si el video ya existe por hash
     existing = db.query(Video).filter(Video.hash_video == video_info['hash']).first()

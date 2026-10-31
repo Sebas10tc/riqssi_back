@@ -123,8 +123,13 @@ def _reject_admin_membership_change(user: Usuario) -> None:
         raise HTTPException(status_code=400, detail='La membresía de un administrador es Premium permanente y no puede modificarse')
 
 
-def _yape_qr_url() -> str:
-    return os.getenv('YAPE_QR_URL', '/storage/yape/qr.png')
+def _yape_qr_url() -> str | None:
+    url = os.getenv('YAPE_QR_URL', '').strip()
+    if not url:
+        return None
+    if not url.lower().startswith('https://'):
+        raise RuntimeError('YAPE_QR_URL debe ser una URL HTTPS pública de Supabase Storage')
+    return url
 
 
 def _expire_membership_if_needed(user: Usuario, db: Session) -> bool:
@@ -724,12 +729,17 @@ def send_membership_expiration_reminder(user: Usuario) -> None:
     smtp_password = os.getenv('SMTP_PASSWORD', '')
     smtp_from_name = os.getenv('SMTP_FROM_NAME', 'RIQSSI')
     smtp_from_email = os.getenv('SMTP_FROM_EMAIL', smtp_user)
-    qr_url = os.getenv('YAPE_QR_EMAIL_URL') or _yape_qr_url()
+    qr_url = _yape_qr_url()
 
     if not smtp_password:
         raise RuntimeError('Falta configurar SMTP_PASSWORD para enviar recordatorios')
 
     expiration_text = user.membership_expiration.strftime('%d/%m/%Y') if user.membership_expiration else 'próximamente'
+    qr_instruction = (
+        f"QR público de Yape: {qr_url}"
+        if qr_url
+        else "Consulta el QR de Yape desde la aplicación RIQSSI."
+    )
     message = EmailMessage()
     message['Subject'] = 'Tu membresía RIQSSI vence pronto'
     message['From'] = f'{smtp_from_name} <{smtp_from_email}>'
@@ -737,18 +747,10 @@ def send_membership_expiration_reminder(user: Usuario) -> None:
     message.set_content(
         f"Hola {user.nombre or user.nombreuser},\n\n"
         f"Tu membresía vence el {expiration_text}. Renueva antes de esa fecha para mantener el acceso a las funciones avanzadas.\n\n"
-        f"Código o enlace QR de Yape: {qr_url}\n\n"
+        f"{qr_instruction}\n\n"
         "Después del pago, sube tu comprobante y código de operación desde RIQSSI.\n\n"
         "Saludos,\nEquipo RIQSSI"
     )
-
-    qr_path = Path(qr_url) if not qr_url.startswith(('http://', 'https://', '/storage/')) else Path(__file__).resolve().parents[2] / qr_url.lstrip('/')
-    if qr_path.is_file():
-        if qr_path.suffix.lower() == '.pdf':
-            maintype, subtype = 'application', 'pdf'
-        else:
-            maintype, subtype = 'image', qr_path.suffix.lstrip('.').lower() or 'png'
-        message.add_attachment(qr_path.read_bytes(), maintype=maintype, subtype=subtype, filename=qr_path.name)
 
     _send_smtp(smtp_host, smtp_port, smtp_user, smtp_password, message)
 

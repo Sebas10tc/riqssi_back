@@ -68,7 +68,7 @@ app.include_router(router_historial.router, prefix="/historial", tags=["Historia
 
 storage_dir = Path(__file__).resolve().parents[1] / "storage"
 # Solo se sirven carpetas usadas por el frontend; el resto de buckets (audio, MFCC, pistas) no se exponen.
-PUBLIC_STORAGE_FOLDERS = {"videos", "thumbnails", "video_frames", "yape", "payment_proofs"}
+PUBLIC_STORAGE_FOLDERS = {"videos", "thumbnails", "video_frames", "payment_proofs"}
 
 
 @app.get("/storage/{file_path:path}", include_in_schema=False)

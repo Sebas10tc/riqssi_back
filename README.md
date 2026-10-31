@@ -42,6 +42,9 @@ Variables mínimas:
 - `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM_NAME`, `SMTP_FROM_EMAIL`
 - `MODEL_PATH_AUDIO`, `MODEL_PATH_VIDEO`
 - `STORAGE_PATH_VIDEOS`, `STORAGE_PATH_AUDIO`, `STORAGE_PATH_FRAMES`, `STORAGE_PATH_THUMBS`, `STORAGE_PATH_MFCC`
+- `YAPE_QR_URL`: URL HTTPS pública del QR en Supabase Storage.
+
+Guarda el QR únicamente en Supabase Storage: crea un bucket público `yape`, sube `qr.png` a su raíz y configura `YAPE_QR_URL` con la URL pública generada. No uses una ruta local ni `/storage/yape/qr.png`. Configura también la misma URL en Vercel como `VITE_YAPE_QR_URL` y vuelve a desplegar ambos servicios.
 
 ## Advertencia de producción
 

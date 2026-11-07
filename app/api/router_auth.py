@@ -1148,6 +1148,7 @@ def get_admin_system_status(db: Session = Depends(get_db), _admin: Usuario = Dep
 async def submit_membership_payment(
     nombreuser: str = Form(...),
     operation_code: str | None = Form(None),
+    plan: str | None = Form(None),
     proof: UploadFile | None = File(None),
     db: Session = Depends(get_db),
 ):
@@ -1162,8 +1163,10 @@ async def submit_membership_payment(
             detail='El código de operación y la imagen del comprobante son obligatorios',
         )
 
-    if not user.membership_request or not _is_paid_plan(user.membership_request):
+    requested_membership = plan or user.membership_request
+    if not requested_membership or not _is_paid_plan(requested_membership):
         raise HTTPException(status_code=400, detail='El usuario no tiene una membresía de pago seleccionada')
+    user.membership_request = _canonical_membership(requested_membership)
 
     extension = Path(proof.filename or '').suffix.lower()
     if extension not in {'.jpg', '.jpeg', '.png', '.pdf'}:

@@ -3,7 +3,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 import asyncio
 import os
-from time import perf_counter
 from pathlib import Path
 from .database import engine, SessionLocal
 from . import models
@@ -12,24 +11,12 @@ from . import models
 from .api import router_auth, router_video, router_tracks, router_audio_analysis, router_video_analysis, router_link, router_final, router_historial
 from .services.membership_reminder_service import run_membership_reminder_loop
 from .services.storage_service import ensure_local_file
-from .services.system_metrics import record_response_time
 
 app = FastAPI(
     title="Deepfake Detection System API",
     description="Sistema modular para detección de deepfakes mediante audio y video",
     version="1.0.0"
 )
-
-
-@app.middleware('http')
-async def collect_response_time(request, call_next):
-    started_at = perf_counter()
-    try:
-        return await call_next(request)
-    finally:
-        if request.url.path != '/admin/system-status':
-            record_response_time((perf_counter() - started_at) * 1000)
-
 
 membership_reminder_task = None
 

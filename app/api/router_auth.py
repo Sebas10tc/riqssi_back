@@ -5,6 +5,7 @@ import string
 import shutil
 import re
 import unicodedata
+import psutil
 from datetime import datetime, timedelta
 from pathlib import Path
 from email.message import EmailMessage
@@ -33,6 +34,7 @@ from ..schemas import UsuarioCreate, UsuarioLogin, PasswordRecoveryRequest, Pass
 from ..security import create_access_token, hash_password, verify_password
 from ..security import get_current_user, require_admin
 from ..services.storage_service import persist_file
+from ..services.system_metrics import get_average_response_time
 
 router = APIRouter()
 PAYMENT_PROOF_DIR = Path(__file__).resolve().parents[2] / 'storage' / 'payment_proofs'
@@ -1105,6 +1107,7 @@ def get_admin_system_status(db: Session = Depends(get_db), _admin: Usuario = Dep
         return path if path.is_absolute() else project_root / path
 
     components = {}
+    components['api'] = {'status': 'operativo', 'detail': 'Servicio disponible'}
 
     try:
         db.execute(text('SELECT 1'))
@@ -1120,6 +1123,10 @@ def get_admin_system_status(db: Session = Depends(get_db), _admin: Usuario = Dep
         'status': 'operativo' if resolve_project_path(video_model_path).is_file() else 'error',
         'detail': 'Modelo disponible' if resolve_project_path(video_model_path).is_file() else 'Modelo no encontrado',
     }
+
+    cpu_percent = psutil.cpu_percent(interval=0.1)
+    memory_percent = psutil.virtual_memory().percent
+    average_response_ms, response_sample_count = get_average_response_time()
 
     try:
         total, used, free = shutil.disk_usage(storage_path if storage_path.exists() else project_root)
@@ -1139,6 +1146,12 @@ def get_admin_system_status(db: Session = Depends(get_db), _admin: Usuario = Dep
     return {
         'status': overall_status,
         'components': components,
+        'metrics': {
+            'cpu_percent': cpu_percent,
+            'memory_percent': memory_percent,
+            'average_response_ms': average_response_ms,
+            'response_sample_count': response_sample_count,
+        },
         'checked_at': datetime.utcnow().isoformat() + 'Z',
     }
 

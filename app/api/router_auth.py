@@ -57,6 +57,7 @@ def _normalize_plan_name(plan_value: str | None) -> str:
         'free': 'gratis',
         'basico': 'basico',
         'básico': 'basico',
+        'basic': 'basico',
         'premium': 'premium',
     }
 

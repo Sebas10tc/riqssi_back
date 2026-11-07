@@ -904,17 +904,11 @@ async def login(credentials: UsuarioLogin, db: Session = Depends(get_db)):
     normalized_email = _normalize_email(credentials.correo)
     user = db.query(Usuario).filter(func.lower(Usuario.correo) == normalized_email).first()
 
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Correo incorrecto"
-        )
-
-    if not verify_password(credentials.clave, user.clave):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Contraseña incorrecta"
-        )
+    if not user or not verify_password(credentials.clave, user.clave):
+        return {
+            "authenticated": False,
+            "detail": "Correo o contraseña incorrectos",
+        }
 
     if not user.clave.startswith('$2'):
         user.clave = hash_password(credentials.clave)
@@ -925,6 +919,7 @@ async def login(credentials: UsuarioLogin, db: Session = Depends(get_db)):
     membership_row = _get_latest_membership_row(db, user.nombreuser)
 
     return {
+        "authenticated": True,
         "message": "Login exitoso",
         "access_token": create_access_token(user),
         "token_type": "bearer",

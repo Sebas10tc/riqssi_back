@@ -56,7 +56,7 @@ async def save_local_video(file: UploadFile, max_size_bytes: int, plan_name: str
                 if file_size > max_size_bytes:
                     raise HTTPException(
                         status_code=413,
-                        detail=f"El archivo supera el límite de {max_size_bytes // (1024 * 1024)} MB del plan {plan_name}.",
+                        detail="El video supera el tamaño máximo permitido para tu plan. Mejora tu plan para subir videos más pesados.",
                     )
                 buffer.write(content)
                 sha256.update(content)

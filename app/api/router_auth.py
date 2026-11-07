@@ -482,6 +482,7 @@ def get_admin_dashboard_summary(db: Session = Depends(get_db), _admin: Usuario =
             'payment_proof_path': user.payment_proof_path,
             'payment_submitted_at': user.payment_submitted_at.isoformat() if user.payment_submitted_at else None,
             'membership_expiration': user.membership_expiration.isoformat() if user.membership_expiration else None,
+            'membership_started_at': membership_row['fechasubscripcion'].isoformat() if membership_row and membership_row['fechasubscripcion'] else None,
             'membership': {
                 'idmembresia': membership_row['idmembresia'] if membership_row else None,
                 'nombre': user.membership or 'free',

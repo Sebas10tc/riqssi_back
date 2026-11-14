@@ -584,10 +584,16 @@ def update_user_membership(nombreuser: str, payload: dict, db: Session = Depends
 
     if current_membership:
         current_membership.membresia_idmembresi = membership.idmembresia
+        current_membership.fechasubscripcion = datetime.utcnow()
         current_membership.fechavenc = expires_at if _is_paid_plan(membership.nombre) else None
         db.add(current_membership)
+        user.membership = _canonical_membership(membership.nombre)
         user.membership_expiration = expires_at if _is_paid_plan(membership.nombre) else None
-        user.payment_status = 'approved' if _is_paid_plan(membership.nombre) else 'approved'
+        user.payment_status = 'approved'
+        user.membership_request = None
+        user.payment_operation_code = None
+        user.payment_proof_path = None
+        user.payment_submitted_at = None
         user.membership_reminder_sent_at = None
         db.add(user)
         db.commit()
@@ -601,11 +607,16 @@ def update_user_membership(nombreuser: str, payload: dict, db: Session = Depends
     new_membership = Membresia_Usuario(
         usuario_nombreuser=nombreuser,
         membresia_idmembresi=membership.idmembresia,
-        fechavenc=expires_at,
+        fechavenc=expires_at if _is_paid_plan(membership.nombre) else None,
     )
     db.add(new_membership)
+    user.membership = _canonical_membership(membership.nombre)
     user.membership_expiration = expires_at if _is_paid_plan(membership.nombre) else None
     user.payment_status = 'approved'
+    user.membership_request = None
+    user.payment_operation_code = None
+    user.payment_proof_path = None
+    user.payment_submitted_at = None
     user.membership_reminder_sent_at = None
     db.add(user)
     db.commit()

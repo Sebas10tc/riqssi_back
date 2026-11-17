@@ -254,7 +254,7 @@ def validate_video_track(pvideo_hash: str, db: Session, nombreuser: str | None =
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     if total_frames < 150:
         cap.release()
-        raise HTTPException(status_code=400, detail="Video insuficiente (mínimo 150 frames).")
+        raise HTTPException(status_code=400, detail="Video con frames insuficientes")
 
     cap.release()
 
@@ -301,7 +301,7 @@ def analyze_video_track(pvideo_hash: str, db: Session, nombreuser: str | None = 
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     if total_frames < 150:
         cap.release()
-        raise HTTPException(status_code=400, detail="Video insuficiente (mínimo 150 frames).")
+        raise HTTPException(status_code=400, detail="Video con frames insuficientes")
 
 
     try:

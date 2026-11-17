@@ -76,6 +76,12 @@ def _canonical_membership(label: str | None) -> str:
     return {'gratis': 'free', 'basico': 'basic', 'premium': 'premium'}.get(normalized, 'free')
 
 
+def _membership_label(plan_value: str | None) -> str:
+    normalized = _normalize_plan_name(plan_value)
+    labels = {'gratis': 'Gratis', 'basico': 'Básico', 'premium': 'Premium'}
+    return labels.get(normalized, 'Gratis')
+
+
 def _is_paid_plan(plan_value: str | None) -> bool:
     return _canonical_membership(plan_value) in {'basic', 'premium'}
 
@@ -192,7 +198,7 @@ def _enforce_plan_limits(user: Usuario, db: Session, video_hash: str | None = No
     if video and video.duracion and video.duracion > duration_limit_minutes * 60:
         raise HTTPException(
             status_code=403,
-            detail=f'El video supera el límite de {duration_limit_minutes} minuto(s) del plan {plan}.',
+            detail=f'El video supera el límite de {duration_limit_minutes} minuto(s) del plan {_membership_label(plan)}.',
         )
 
 def require_active_membership(nombreuser: str, db: Session, video_hash: str | None = None) -> Usuario:

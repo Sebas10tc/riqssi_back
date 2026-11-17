@@ -293,6 +293,12 @@ def process_video_download(url: str):
                     logger.exception('Link download pipeline failed after yt-dlp attempt: url=%s', url)
                     error_text = last_error.lower()
 
+                    if '[instagram:user]' in error_text and 'unable to extract data' in error_text:
+                        raise HTTPException(
+                            status_code=400,
+                            detail='Enlace no permitido. Solo se permiten videos en formato mp4',
+                        )
+
                     if 'this video is unavailable' in error_text or 'video unavailable' in error_text:
                         raise HTTPException(
                             status_code=400,

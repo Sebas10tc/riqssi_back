@@ -186,7 +186,9 @@ def _enforce_plan_limits(user: Usuario, db: Session, video_hash: str | None = No
         return
 
     plan = user.membership or 'free'
-    if user.payment_status in {'canceled', 'expired', 'denied'}:
+    if user.payment_status in {'canceled', 'expired'} or (
+        user.payment_status in {'denied', 'rejected'} and not _has_active_paid_membership(user)
+    ):
         plan = 'free'
 
     _, duration_limit_minutes = _get_plan_limits(plan, db)
@@ -224,7 +226,9 @@ def consume_video_analysis(user: Usuario, db: Session) -> None:
 
     plan = user.membership or 'free'
 
-    if user.payment_status in {'canceled', 'expired', 'denied'}:
+    if user.payment_status in {'canceled', 'expired'} or (
+        user.payment_status in {'denied', 'rejected'} and not _has_active_paid_membership(user)
+    ):
         plan = 'free'
 
     plan_limit, _ = _get_plan_limits(plan, db)
@@ -1304,7 +1308,7 @@ def review_membership_payment(nombreuser: str, payload: dict, db: Session = Depe
 
     requested_membership = user.membership_request
     is_renewal = _has_active_paid_membership(user)
-    user.payment_status = decision
+    user.payment_status = 'approved' if decision == 'approved' else 'denied'
     user.payment_reviewed_at = datetime.utcnow()
     if decision == 'approved':
         if not _is_paid_plan(requested_membership):
@@ -1320,7 +1324,6 @@ def review_membership_payment(nombreuser: str, payload: dict, db: Session = Depe
         user.videos_analyzed_count = 0
         user.videos_analyzed_date = datetime.utcnow().date()
     elif is_renewal:
-        user.payment_status = 'approved'
         user.membership_request = None
     else:
         _assign_membership_to_user(db, nombreuser, 'gratis')

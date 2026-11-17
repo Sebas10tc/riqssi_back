@@ -18,9 +18,17 @@ async def upload_video(
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
 
     plan = user.membership or "free"
+    payment_status = str(user.payment_status or "approved").lower()
+    has_active_paid_membership = (
+        str(plan).lower() in {"basic", "basico", "básico", "premium"}
+        and user.membership_expiration is not None
+        and user.membership_expiration.date() >= datetime.datetime.utcnow().date()
+    )
     if (user.role or "").lower() == "admin":
         plan = "premium"
-    elif user.payment_status in {"canceled", "expired", "denied"}:
+    elif payment_status in {"canceled", "expired"} or (
+        payment_status in {"denied", "rejected"} and not has_active_paid_membership
+    ):
         plan = "free"
     elif user.membership_expiration and user.membership_expiration.date() < datetime.datetime.utcnow().date():
         plan = "free"

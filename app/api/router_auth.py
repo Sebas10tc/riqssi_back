@@ -923,10 +923,16 @@ async def login(credentials: UsuarioLogin, db: Session = Depends(get_db)):
     normalized_email = _normalize_email(credentials.correo)
     user = db.query(Usuario).filter(func.lower(Usuario.correo) == normalized_email).first()
 
-    if not user or not verify_password(credentials.clave, user.clave):
+    if not user:
         return {
             "authenticated": False,
             "detail": "Correo o contraseña incorrectos",
+        }
+
+    if not verify_password(credentials.clave, user.clave):
+        return {
+            "authenticated": False,
+            "detail": "Contraseña incorrecta",
         }
 
     if not user.clave.startswith('$2'):

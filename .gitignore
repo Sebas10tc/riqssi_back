@@ -16,3 +16,15 @@ tmp_*
 *.log
 cookies*.txt
 *.cookies
+
+# Utilidades locales y scripts de diagnostico o migracion ya ejecutados
+app/services/borrar.py
+scripts/add_fecha_consulta.py
+scripts/add_historial_entries.py
+scripts/add_video_analysis_limits.py
+scripts/debug_verdict_call.py
+scripts/dump_historial.py
+scripts/dump_videos.py
+scripts/get_pistas_for_video.py
+scripts/inspect_analysis.py
+scripts/probar_modelos.py

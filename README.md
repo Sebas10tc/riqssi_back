@@ -1,53 +1,105 @@
 # RIQSSI Backend
 
-API FastAPI para análisis de videos y audio.
+API FastAPI para autenticación, administración, almacenamiento y análisis de deepfakes mediante modelos de audio y video.
 
-## Local
+## Tecnologías
+
+- FastAPI y Uvicorn
+- PostgreSQL y SQLAlchemy
+- Alembic
+- JWT y bcrypt
+- Supabase Storage
+- OpenCV, librosa, PyTorch y scikit-learn
+- FFmpeg y yt-dlp
+
+## Desarrollo local
 
 ```powershell
+cd C:\RIQSSI\RIQSSI_BACK
 Copy-Item .env.example .env
-# Edita .env con tu PostgreSQL y SMTP
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
+alembic upgrade head
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-La API queda en `http://localhost:8000` y la documentación en `/docs`.
+La API queda en `http://localhost:8000` y Swagger en `http://localhost:8000/docs`.
+
+## Configuración
+
+Partiendo de `.env.example`, configura al menos:
+
+- `DATABASE_URL`: conexión PostgreSQL.
+- `JWT_SECRET_KEY`: clave aleatoria larga usada para firmar tokens.
+- `JWT_ALGORITHM` y `JWT_EXPIRE_MINUTES`.
+- `FRONTEND_URLS`: dominios permitidos separados por comas.
+- `MODEL_PATH_AUDIO` y `MODEL_PATH_VIDEO`.
+- `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM_NAME` y `SMTP_FROM_EMAIL`.
+- `SUPABASE_URL` y `SUPABASE_SERVICE_ROLE_KEY`.
+- `YAPE_QR_URL`: URL HTTPS pública del QR de Yape.
+
+En desarrollo puede omitirse `SUPABASE_*`, aunque las rutas que persisten archivos fallarán si no existe una configuración compatible. Para el almacenamiento local usa las rutas `STORAGE_PATH_*` del archivo de ejemplo.
+
+## Supabase Storage
+
+La aplicación usa buckets privados para:
+
+- `videos`
+- `audio_tracks`
+- `video_tracks`
+- `video_frames`
+- `thumbnails`
+- `mfcc_data`
+- `payment_proofs`
+
+Los nombres pueden cambiarse con las variables `SUPABASE_BUCKET_*`. El bucket público `yape` solo contiene opcionalmente `qr.png` para mostrar el QR de pago.
+
+No uses secretos de Supabase ni claves privadas en el frontend.
 
 ## Migraciones
 
-En una base nueva ejecuta antes de arrancar la API:
+Crear una revisión después de modificar modelos:
 
 ```powershell
+alembic revision --autogenerate -m "descripcion del cambio"
 alembic upgrade head
 ```
 
-En una base existente, conserva los datos y registra el esquema actual como baseline:
+En una base existente:
 
 ```powershell
-alembic stamp 0001_initial_schema
+alembic current
+alembic history
 ```
 
-Las próximas modificaciones de modelos deben añadirse como revisiones Alembic. La lógica de cambios heredada de `app.main` debe retirarse después de aplicar este baseline en todos los entornos.
+La revisión inicial se encuentra en `alembic/versions/`.
+
+## Endpoints principales
+
+- `/register`, `/login`, `/recover-password`, `/change-password`
+- `/admin/*`: operaciones administrativas protegidas por JWT y rol.
+- `/membership/*`: membresías y comprobantes de pago.
+- `/video/upload`, `/links/download`
+- `/tracks/*`: extracción y reparación de pistas.
+- `/video-analysis/*` y `/audio-analysis/*`
+- `/analysis/*`: reporte y veredicto final.
+- `/historial/*`: historial del usuario.
+
+Todos los endpoints detallados están documentados en `/docs` y `/redoc`.
+
+## Pruebas
+
+```powershell
+python -m pytest tests
+```
 
 ## Render con Docker
 
-Crea un servicio Web en Render usando este directorio como raíz y `Dockerfile` como Docker runtime. Render debe inyectar `PORT` automáticamente. Configura `DATABASE_URL` usando la conexión interna del PostgreSQL de Render y define `FRONTEND_URLS` con la URL exacta de Vercel.
+El despliegue usa `Dockerfile` y `render.yaml`. Antes de iniciar Uvicorn, Docker ejecuta:
 
-Variables mínimas:
+```sh
+alembic -c /app/alembic.ini upgrade head
+```
 
-- `DATABASE_URL`
-- `FRONTEND_URLS`
-- `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM_NAME`, `SMTP_FROM_EMAIL`
-- `MODEL_PATH_AUDIO`, `MODEL_PATH_VIDEO`
-- `STORAGE_PATH_VIDEOS`, `STORAGE_PATH_AUDIO`, `STORAGE_PATH_FRAMES`, `STORAGE_PATH_THUMBS`, `STORAGE_PATH_MFCC`
-- `YAPE_QR_URL`: URL HTTPS pública del QR en Supabase Storage.
-
-Guarda el QR únicamente en Supabase Storage: crea un bucket público `yape`, sube `qr.png` a su raíz y configura `YAPE_QR_URL` con la URL pública generada. No uses una ruta local ni `/storage/yape/qr.png`. Configura también la misma URL en Vercel como `VITE_YAPE_QR_URL` y vuelve a desplegar ambos servicios.
-
-## Advertencia de producción
-
-La implementación actual todavía guarda videos, pistas, miniaturas, MFCC y comprobantes en `storage/`, que es efímero en Render. También autentica por `nombreuser` y almacena/compara `clave` sin hashing. Antes de aceptar usuarios públicos hay que migrar los objetos a Supabase Storage, implementar JWT o sesiones verificadas y migrar las contraseñas a hashes.
-
-`app.main` también ejecuta creación y cambios de tablas durante el import. Para producción debe reemplazarse por migraciones versionadas (por ejemplo Alembic) ejecutadas como paso de deploy.
+Configura `DATABASE_URL` con la URL interna de PostgreSQL de Render y `FRONTEND_URLS` con el dominio exacto de Vercel. Render debe inyectar `PORT`.

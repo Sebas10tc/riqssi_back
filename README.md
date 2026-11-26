@@ -39,7 +39,11 @@ Partiendo de `.env.example`, configura al menos:
 - `SUPABASE_URL` y `SUPABASE_SERVICE_ROLE_KEY`.
 - `YAPE_QR_URL`: URL HTTPS pública del QR de Yape.
 
-En desarrollo puede omitirse `SUPABASE_*`, aunque las rutas que persisten archivos fallarán si no existe una configuración compatible. Para el almacenamiento local usa las rutas `STORAGE_PATH_*` del archivo de ejemplo.
+Los archivos que deben conservarse se suben a Supabase Storage. Configura `SUPABASE_URL` y `SUPABASE_SERVICE_ROLE_KEY` para usar las rutas que guardan archivos; esas operaciones fallarán si falta la configuración. Las rutas `STORAGE_PATH_*` indican dónde se crean o procesan archivos localmente antes de subirlos. En Render, el disco local del contenedor es efímero y no debe usarse como almacenamiento persistente.
+
+## Seguridad de contraseñas
+
+Las contraseñas nuevas se almacenan con hash bcrypt, no en texto plano. Para cuentas antiguas que aún tengan la contraseña en texto plano, el backend verifica la contraseña durante el inicio de sesión y, si es correcta, la reemplaza por un hash bcrypt.
 
 ## Supabase Storage
 

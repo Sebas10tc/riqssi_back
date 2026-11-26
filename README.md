@@ -57,7 +57,7 @@ La aplicación usa buckets privados para:
 - `mfcc_data`
 - `payment_proofs`
 
-Los nombres pueden cambiarse con las variables `SUPABASE_BUCKET_*`. El bucket público `yape` solo contiene opcionalmente `qr.png` para mostrar el QR de pago.
+Los nombres pueden cambiarse con las variables `SUPABASE_BUCKET_*`. El bucket público `yape` contiene `qr.jpg` para mostrar el QR de pago.
 
 No uses secretos de Supabase ni claves privadas en el frontend.
 
